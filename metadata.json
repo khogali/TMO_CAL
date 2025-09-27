@@ -1,0 +1,5 @@
+{
+  "name": "T-Mobile Quote Generator",
+  "description": "A web app that generates clean, shareable quotes for T-Mobile plans. The tool calculates plan costs, applies discounts, adds taxes, and displays everything in a professional, formatted snapshot.",
+  "requestFramePermissions": []
+}
