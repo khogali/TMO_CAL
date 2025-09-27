@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import QuoteForm from './components/QuoteForm';
 import QuoteSnapshot from './components/QuoteSnapshot';
+import QuoteModal from './components/QuoteModal';
+import BottomNavBar from './components/BottomNavBar';
 import LeadsPanel from './components/LeadsPanel';
 import AdminPanel from './components/AdminPanel';
 import PasswordModal from './components/PasswordModal';
 import DarkModeToggle from './components/DarkModeToggle';
 import Toast from './components/ui/Toast';
-import { QuoteConfig, SavedLead, CustomerType, InsuranceTier, PlanPricingData, DiscountSettings, InsurancePricingData } from './types';
-import { PLAN_PRICING, INSURANCE_PRICING } from './constants';
+import { QuoteConfig, SavedLead, CustomerType, PlanPricingData, DiscountSettings, InsurancePlan, TradeInType } from './types';
+import { PLAN_PRICING, INITIAL_INSURANCE_PLANS } from './constants';
 
 const INITIAL_CONFIG: QuoteConfig = {
   customerName: '',
@@ -15,12 +17,18 @@ const INITIAL_CONFIG: QuoteConfig = {
   customerType: CustomerType.STANDARD,
   plan: 'go5g-plus',
   lines: 1,
-  insuranceTier: InsuranceTier.NONE,
+  insuranceTier: 'none',
+  insuranceLines: 0,
   devices: [],
+  accessories: [],
   discounts: {
     autopay: true,
     insider: false,
     thirdLineFree: false,
+  },
+  fees: {
+    activation: false,
+    upgrade: false,
   },
   taxRate: 8.875,
 };
@@ -39,18 +47,20 @@ function App() {
   const [preparedByName, setPreparedByName] = useState(DEFAULT_PREPARED_BY_NAME);
   const [preparedByNumber, setPreparedByNumber] = useState(DEFAULT_PREPARED_BY_NUMBER);
   const [discountSettings, setDiscountSettings] = useState<DiscountSettings>(DEFAULT_DISCOUNT_SETTINGS);
-  const [insurancePricing, setInsurancePricing] = useState<InsurancePricingData>(INSURANCE_PRICING);
+  const [insurancePlans, setInsurancePlans] = useState<InsurancePlan[]>(INITIAL_INSURANCE_PLANS);
 
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
   const [isLeadsPanelOpen, setIsLeadsPanelOpen] = useState(false);
   const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
   const [panelToOpen, setPanelToOpen] = useState<'admin' | 'leads' | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
 
   // Load from local storage on mount
   useEffect(() => {
+    // Load settings from local storage
     try {
       const savedLeads = localStorage.getItem('savedLeads');
       if (savedLeads) setLeads(JSON.parse(savedLeads));
@@ -58,8 +68,6 @@ function App() {
       const savedPricing = localStorage.getItem('planPricing');
       if (savedPricing) {
         const parsedPricing = JSON.parse(savedPricing);
-        const validPlan = Object.keys(parsedPricing).find(key => parsedPricing[key].availableFor.includes(INITIAL_CONFIG.customerType));
-        if (validPlan) setConfig(prev => ({...prev, plan: validPlan}));
         setPlanPricing(parsedPricing);
       } else {
         setPlanPricing(PLAN_PRICING);
@@ -74,8 +82,14 @@ function App() {
       const savedDiscounts = localStorage.getItem('discountSettings');
       if (savedDiscounts) setDiscountSettings(JSON.parse(savedDiscounts));
 
-      const savedInsurance = localStorage.getItem('insurancePricing');
-      if (savedInsurance) setInsurancePricing(JSON.parse(savedInsurance));
+      const savedInsurance = localStorage.getItem('insurancePlans');
+      if (savedInsurance) {
+        setInsurancePlans(JSON.parse(savedInsurance));
+      } else {
+        const oldSavedInsurance = localStorage.getItem('insurancePricing');
+        if (oldSavedInsurance) localStorage.removeItem('insurancePricing');
+        setInsurancePlans(INITIAL_INSURANCE_PLANS);
+      }
 
     } catch (error) {
       console.error("Failed to parse from local storage", error);
@@ -100,8 +114,8 @@ function App() {
   }, [discountSettings]);
 
   useEffect(() => {
-    localStorage.setItem('insurancePricing', JSON.stringify(insurancePricing));
-  }, [insurancePricing]);
+    localStorage.setItem('insurancePlans', JSON.stringify(insurancePlans));
+  }, [insurancePlans]);
 
   useEffect(() => {
     try {
@@ -135,10 +149,29 @@ function App() {
     };
     setLeads(prevLeads => [newLead, ...prevLeads]);
     setToastMessage('Quote saved successfully!');
+    setIsQuoteModalOpen(false); // Close modal on save
   };
 
   const handleLoadLead = (lead: SavedLead) => {
-    setConfig(lead);
+    // Ensure the loaded lead has all the necessary properties, providing defaults for missing ones.
+    const completeConfig: QuoteConfig = {
+      ...INITIAL_CONFIG,
+      ...lead,
+      // For older leads without `insuranceLines`, default to all lines if a tier was selected.
+      insuranceLines: lead.insuranceLines ?? (lead.insuranceTier && lead.insuranceTier !== 'none' ? lead.lines : 0),
+      fees: lead.fees || INITIAL_CONFIG.fees,
+      discounts: lead.discounts || INITIAL_CONFIG.discounts,
+      devices: (lead.devices || []).map(device => ({
+          price: device.price || 0,
+          tradeIn: device.tradeIn || 0,
+          tradeInType: device.tradeInType || TradeInType.MONTHLY_CREDIT,
+      })),
+      accessories: (lead.accessories || []).map(accessory => ({
+        ...accessory,
+        quantity: accessory.quantity || 1,
+      })),
+    };
+    setConfig(completeConfig);
     setIsLeadsPanelOpen(false); // Close panel after loading
   };
 
@@ -146,13 +179,14 @@ function App() {
     setLeads(prevLeads => prevLeads.filter(lead => lead.id !== leadId));
   };
   
-  const handleSaveAdminSettings = (settings: { pricing: PlanPricingData; name: string; number: string; discounts: DiscountSettings; insurance: InsurancePricingData; }) => {
+  const handleSaveAdminSettings = (settings: { pricing: PlanPricingData; name: string; number: string; discounts: DiscountSettings; insurance: InsurancePlan[]; }) => {
     setPlanPricing(settings.pricing);
     setPreparedByName(settings.name);
     setPreparedByNumber(settings.number);
     setDiscountSettings(settings.discounts);
-    setInsurancePricing(settings.insurance);
+    setInsurancePlans(settings.insurance);
     setIsAdminPanelOpen(false);
+    setToastMessage('Admin settings saved successfully!');
   };
 
   const handleResetAdminSettings = () => {
@@ -160,7 +194,7 @@ function App() {
     setPreparedByName(DEFAULT_PREPARED_BY_NAME);
     setPreparedByNumber(DEFAULT_PREPARED_BY_NUMBER);
     setDiscountSettings(DEFAULT_DISCOUNT_SETTINGS);
-    setInsurancePricing(INSURANCE_PRICING);
+    setInsurancePlans(INITIAL_INSURANCE_PLANS);
     setIsAdminPanelOpen(false);
   }
 
@@ -190,31 +224,33 @@ function App() {
                 </div>
                 <div className="flex items-center space-x-4">
                     <DarkModeToggle isDarkMode={isDarkMode} setIsDarkMode={setIsDarkMode} />
-                    <button 
-                        onClick={() => handleOpenPasswordModal('leads')}
-                        className="text-slate-500 hover:text-tmobile-magenta dark:text-slate-400 dark:hover:text-tmobile-magenta transition-colors"
-                        aria-label="Open Leads Panel"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                        </svg>
-                    </button>
-                    <button 
-                        onClick={() => handleOpenPasswordModal('admin')}
-                        className="text-slate-500 hover:text-tmobile-magenta dark:text-slate-400 dark:hover:text-tmobile-magenta transition-colors"
-                        aria-label="Open Admin Panel"
-                    >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                    </button>
+                    <div className="hidden lg:flex items-center space-x-4">
+                        <button 
+                            onClick={() => handleOpenPasswordModal('leads')}
+                            className="text-slate-500 hover:text-tmobile-magenta dark:text-slate-400 dark:hover:text-tmobile-magenta transition-colors"
+                            aria-label="Open Leads Panel"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                        </button>
+                        <button 
+                            onClick={() => handleOpenPasswordModal('admin')}
+                            className="text-slate-500 hover:text-tmobile-magenta dark:text-slate-400 dark:hover:text-tmobile-magenta transition-colors"
+                            aria-label="Open Admin Panel"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                            </svg>
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
       </header>
       
-      <main className="container mx-auto p-4 md:p-6 lg:p-8">
+      <main className="container mx-auto p-4 md:p-6 lg:p-8 pb-24 lg:pb-8">
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
           <div className="lg:col-span-3">
             <QuoteForm 
@@ -222,10 +258,10 @@ function App() {
               setConfig={setConfig} 
               planPricing={planPricing}
               discountSettings={discountSettings}
-              insurancePricing={insurancePricing}
+              insurancePlans={insurancePlans}
             />
           </div>
-          <div className="lg:col-span-2 space-y-8 sticky top-24">
+          <div className="hidden lg:block lg:col-span-2 space-y-8 sticky top-24">
             <QuoteSnapshot 
               config={config} 
               planPricing={planPricing} 
@@ -233,11 +269,42 @@ function App() {
               preparedByName={preparedByName}
               preparedByNumber={preparedByNumber}
               discountSettings={discountSettings}
-              insurancePricing={insurancePricing}
+              insurancePlans={insurancePlans}
             />
           </div>
         </div>
       </main>
+
+      <div className="lg:hidden fixed bottom-24 right-6 z-30 animate-fade-in-down">
+          <button
+              onClick={() => setIsQuoteModalOpen(true)}
+              className="bg-tmobile-magenta text-white font-bold p-4 rounded-full shadow-lg hover:bg-pink-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-tmobile-magenta dark:focus:ring-offset-slate-900 transition-transform hover:scale-105"
+              aria-label="View Quote Summary"
+          >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+          </button>
+      </div>
+
+      <BottomNavBar
+        onOpenLeads={() => handleOpenPasswordModal('leads')}
+        onOpenAdmin={() => handleOpenPasswordModal('admin')}
+      />
+
+      {isQuoteModalOpen && (
+        <QuoteModal onClose={() => setIsQuoteModalOpen(false)}>
+            <QuoteSnapshot 
+              config={config} 
+              planPricing={planPricing} 
+              onSave={handleSaveLead}
+              preparedByName={preparedByName}
+              preparedByNumber={preparedByNumber}
+              discountSettings={discountSettings}
+              insurancePlans={insurancePlans}
+            />
+        </QuoteModal>
+      )}
 
       {isPasswordModalOpen && (
         <PasswordModal 
@@ -254,7 +321,7 @@ function App() {
             onDelete={handleDeleteLead}
             onClose={() => setIsLeadsPanelOpen(false)}
             discountSettings={discountSettings}
-            insurancePricing={insurancePricing}
+            insurancePlans={insurancePlans}
         />
       )}
 
@@ -264,7 +331,7 @@ function App() {
           preparedByName={preparedByName}
           preparedByNumber={preparedByNumber}
           discountSettings={discountSettings}
-          insurancePricing={insurancePricing}
+          insurancePlans={insurancePlans}
           onSave={handleSaveAdminSettings}
           onReset={handleResetAdminSettings}
           onClose={() => setIsAdminPanelOpen(false)}

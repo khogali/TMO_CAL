@@ -28,7 +28,14 @@ const DiscountOption: React.FC<DiscountOptionProps> = ({ icon, label, descriptio
         </span>
       </div>
       <div className="flex-grow">
-        <p className="font-semibold text-slate-800 dark:text-slate-100">{label}</p>
+        <div className="flex items-center gap-2 mb-0.5">
+          <p className="font-semibold text-slate-800 dark:text-slate-100">{label}</p>
+          {checked && (
+            <span className="text-xs font-semibold bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 py-0.5 px-2 rounded-full animate-fade-in-down">
+                Active
+            </span>
+          )}
+        </div>
         <p className="text-sm text-slate-500 dark:text-slate-400">{description}</p>
       </div>
       <div className="ml-4 flex-shrink-0">

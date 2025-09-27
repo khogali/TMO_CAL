@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { SavedLead, PlanPricingData, DiscountSettings, CustomerType, InsurancePricingData } from '../types';
+import { SavedLead, PlanPricingData, DiscountSettings, CustomerType, InsurancePlan, TradeInType, AccessoryPaymentType } from '../types';
 import SavedLeads from './SavedLeads';
 
 interface LeadsPanelProps {
@@ -9,10 +9,8 @@ interface LeadsPanelProps {
   onDelete: (leadId: string) => void;
   onClose: () => void;
   discountSettings: DiscountSettings;
-  insurancePricing: InsurancePricingData;
+  insurancePlans: InsurancePlan[];
 }
-
-const formatCurrency = (amount: number) => amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
 const getCustomerTypeLabel = (type: CustomerType) => {
     switch (type) {
@@ -23,7 +21,7 @@ const getCustomerTypeLabel = (type: CustomerType) => {
     }
 };
 
-const LeadsPanel: React.FC<LeadsPanelProps> = ({ leads, planPricing, onLoad, onDelete, onClose, discountSettings, insurancePricing }) => {
+const LeadsPanel: React.FC<LeadsPanelProps> = ({ leads, planPricing, onLoad, onDelete, onClose, discountSettings, insurancePlans }) => {
   const modalRef = useRef<HTMLDivElement>(null);
   const [isBulkCopied, setIsBulkCopied] = useState(false);
 
@@ -40,36 +38,77 @@ const LeadsPanel: React.FC<LeadsPanelProps> = ({ leads, planPricing, onLoad, onD
   const handleBulkCopy = () => {
     if (leads.length === 0) return;
 
+    const toCents = (dollars: number) => Math.round(dollars * 100);
+    const formatCurrencyForCopy = (amountInCents: number) => (amountInCents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+
     const allLeadsText = leads.map(lead => {
         const planDetails = planPricing[lead.plan];
         if (!planDetails) return `*** Incomplete data for lead: ${lead.customerName} ***`;
 
-        const basePlanPrice = planDetails.price[lead.lines - 1] || 0;
-        const autopayDiscount = lead.discounts.autopay ? lead.lines * discountSettings.autopay : 0;
-        const insiderDiscount = lead.discounts.insider ? basePlanPrice * (discountSettings.insider / 100) : 0;
-        let thirdLineFreeDiscount = 0;
+        const basePlanPriceInCents = toCents(planDetails.price[lead.lines - 1] || 0);
+        const autopayDiscountInCents = lead.discounts.autopay ? toCents(lead.lines * discountSettings.autopay) : 0;
+        const insiderDiscountValue = basePlanPriceInCents * (discountSettings.insider / 100);
+        const insiderDiscountInCents = lead.discounts.insider ? Math.round(insiderDiscountValue) : 0;
+        let thirdLineFreeDiscountInCents = 0;
         if (lead.discounts.thirdLineFree && lead.lines >= 3) {
           const twoLinePrice = planDetails.price[1] || 0;
           const threeLinePrice = planDetails.price[2] || 0;
-          thirdLineFreeDiscount = threeLinePrice - twoLinePrice;
+          thirdLineFreeDiscountInCents = toCents(threeLinePrice - twoLinePrice);
         }
-        const finalPlanPrice = basePlanPrice - autopayDiscount - insiderDiscount - thirdLineFreeDiscount;
-        const insuranceCost = insurancePricing[lead.insuranceTier].price * lead.lines;
-        const totalDeviceCost = lead.devices.reduce((sum, dev) => sum + (Number(dev.price) || 0), 0);
-        const totalTradeIn = lead.devices.reduce((sum, dev) => sum + (Number(dev.tradeIn) || 0), 0);
-        const netDeviceCost = totalDeviceCost - totalTradeIn;
-        const monthlyDevicePayment = netDeviceCost > 0 ? netDeviceCost / 24 : 0;
-        let calculatedTaxes = 0;
+        const finalPlanPriceInCents = basePlanPriceInCents - autopayDiscountInCents - insiderDiscountInCents - thirdLineFreeDiscountInCents;
+        
+        const insuranceLines = lead.insuranceLines ?? (lead.insuranceTier && lead.insuranceTier !== 'none' ? lead.lines : 0);
+        const insuranceDetails = lead.insuranceTier === 'none'
+            ? { id: 'none', name: 'None', price: 0 }
+            : insurancePlans.find(p => p.id === lead.insuranceTier) || { id: 'not-found', name: 'N/A', price: 0 };
+        const insuranceCostInCents = toCents(insuranceDetails.price * insuranceLines);
+        
+        const totalDeviceCostInCents = (lead.devices || []).reduce((sum, dev) => sum + toCents(Number(dev.price) || 0), 0);
+        const lumpSumTradeInInCents = (lead.devices || [])
+            .filter(dev => (dev.tradeInType ?? TradeInType.LUMP_SUM) === TradeInType.LUMP_SUM)
+            .reduce((sum, dev) => sum + toCents(Number(dev.tradeIn) || 0), 0);
+        const monthlyCreditTradeInInCents = (lead.devices || [])
+            .filter(dev => dev.tradeInType === TradeInType.MONTHLY_CREDIT)
+            .reduce((sum, dev) => sum + toCents(Number(dev.tradeIn) || 0), 0);
+
+        const monthlyDevicePaymentInCents = totalDeviceCostInCents > 0 ? Math.round(totalDeviceCostInCents / 24) : 0;
+        const monthlyTradeInCreditInCents = monthlyCreditTradeInInCents > 0 ? Math.round(monthlyCreditTradeInInCents / 24) : 0;
+        
+        const safeAccessories = (lead.accessories || []).map(acc => ({ ...acc, quantity: acc.quantity || 1 }));
+        const paidInFullAccessoriesCostInCents = safeAccessories
+            .filter(acc => acc.paymentType === AccessoryPaymentType.FULL)
+            .reduce((sum, acc) => sum + toCents(acc.price * acc.quantity), 0);
+        const paidInFullAccessoriesTaxInCents = Math.round(paidInFullAccessoriesCostInCents * ((Number(lead.taxRate) || 0) / 100));
+        
+        const financedAccessoriesCostInCents = safeAccessories
+            .filter(acc => acc.paymentType === AccessoryPaymentType.FINANCED)
+            .reduce((sum, acc) => sum + toCents(acc.price * acc.quantity), 0);
+        const financedAccessoriesTaxInCents = Math.round(financedAccessoriesCostInCents * ((Number(lead.taxRate) || 0) / 100));
+        const financedAccessoriesMonthlyCostInCents = financedAccessoriesCostInCents > 0 ? Math.round(financedAccessoriesCostInCents / 12) : 0;
+
+        let calculatedTaxesInCents = 0;
         if (!planDetails.taxesIncluded) {
-          const insurancePricePerLine = insurancePricing[lead.insuranceTier].price;
+          const insurancePricePerLineInCents = toCents(insuranceDetails.price);
+          const planPricesInCents = planDetails.price.map(toCents);
           for (let i = 0; i < lead.lines; i++) {
-            const costOfThisLine = i === 0 ? planDetails.price[0] : planDetails.price[i] - planDetails.price[i - 1];
-            const taxableAmountForLine = costOfThisLine + insurancePricePerLine;
-            calculatedTaxes += taxableAmountForLine * ((Number(lead.taxRate) || 0) / 100);
+            const costOfThisLineInCents = i === 0 ? planPricesInCents[0] : planPricesInCents[i] - planPricesInCents[i - 1];
+            let taxableAmountForLineInCents = costOfThisLineInCents;
+            if (i < insuranceLines) {
+                taxableAmountForLineInCents += insurancePricePerLineInCents;
+            }
+            calculatedTaxesInCents += Math.round(taxableAmountForLineInCents * ((Number(lead.taxRate) || 0) / 100));
           }
         }
-        const monthlyTotal = finalPlanPrice + monthlyDevicePayment + insuranceCost + calculatedTaxes;
-        const dueTodayTotal = netDeviceCost > 0 ? (netDeviceCost) * ((Number(lead.taxRate) || 0) / 100) : 0;
+        const monthlyTotalInCents = finalPlanPriceInCents + monthlyDevicePaymentInCents - monthlyTradeInCreditInCents + insuranceCostInCents + calculatedTaxesInCents + financedAccessoriesMonthlyCostInCents;
+        
+        const dueTodayDeviceTaxInCents = Math.round(totalDeviceCostInCents * ((Number(lead.taxRate) || 0) / 100));
+        
+        const activationFeeInCents = lead.fees?.activation ? toCents(lead.lines * 10) : 0;
+        const upgradeFeeInCents = lead.fees?.upgrade ? toCents(lead.lines * 35) : 0;
+        const totalOneTimeFeesInCents = activationFeeInCents + upgradeFeeInCents;
+        const dueTodayFeesTaxInCents = Math.round(totalOneTimeFeesInCents * ((Number(lead.taxRate) || 0) / 100));
+
+        const dueTodayTotalInCents = dueTodayDeviceTaxInCents - lumpSumTradeInInCents + totalOneTimeFeesInCents + dueTodayFeesTaxInCents + paidInFullAccessoriesCostInCents + paidInFullAccessoriesTaxInCents + financedAccessoriesTaxInCents;
     
         const appliedDiscounts = Object.entries(lead.discounts).filter(([, val]) => val).map(([key]) => {
             if (key === 'autopay') return 'AutoPay';
@@ -77,6 +116,9 @@ const LeadsPanel: React.FC<LeadsPanelProps> = ({ leads, planPricing, onLoad, onD
             if (key === 'thirdLineFree') return '3rd Line Free';
             return '';
         }).filter(Boolean);
+
+        const insuranceLabel = insuranceDetails.name;
+        const insuranceText = insuranceLines > 0 ? `${insuranceLabel} (${insuranceLines} line${insuranceLines > 1 ? 's' : ''})` : 'None';
 
         return `
 *** T-Mobile Quote Summary for ${lead.customerName} ***
@@ -88,17 +130,29 @@ Phone: ${lead.customerPhone || 'N/A'}
 --- QUOTE ---
 Customer Type: ${getCustomerTypeLabel(lead.customerType)}
 Plan: ${planDetails.name} for ${lead.lines} line(s)
-Insurance: ${insurancePricing[lead.insuranceTier]?.name || 'None'}
+Insurance: ${insuranceText}
 
---- DEVICES (${lead.devices.length}) ---
-${lead.devices.length > 0 ? lead.devices.map((dev, i) => `Device ${i + 1}: ${formatCurrency(dev.price)} (Trade-in: ${formatCurrency(dev.tradeIn)})`).join('\n') : 'No devices'}
+--- FEES ---
+${(lead.fees?.activation || lead.fees?.upgrade) ?
+    [
+        lead.fees?.activation && 'Activation Fee ($10/line)',
+        lead.fees?.upgrade && 'Upgrade Fee ($35/line)'
+    ].filter(Boolean).join('\n')
+    : 'No one-time fees'
+}
+
+--- DEVICES (${(lead.devices || []).length}) ---
+${(lead.devices || []).length > 0 ? lead.devices.map((dev, i) => `Device ${i + 1}: ${formatCurrencyForCopy(toCents(dev.price))} (Trade-in: ${formatCurrencyForCopy(toCents(dev.tradeIn))} applied as ${dev.tradeInType === TradeInType.MONTHLY_CREDIT ? 'Monthly Credit' : 'Upfront Credit'})`).join('\n') : 'No devices'}
+
+--- ACCESSORIES (${(lead.accessories || []).length}) ---
+${(lead.accessories || []).length > 0 ? lead.accessories.map((acc, i) => `Accessory ${i + 1}: ${acc.name || 'Unnamed'} (x${acc.quantity || 1}) - ${formatCurrencyForCopy(toCents(acc.price))} (${acc.paymentType === AccessoryPaymentType.FINANCED ? 'Financed' : 'Paid in Full'})`).join('\n') : 'No accessories'}
 
 --- DISCOUNTS ---
 ${appliedDiscounts.length > 0 ? appliedDiscounts.join(', ') : 'None'}
 
 --- PRICING ---
-Total Monthly Estimate: ${formatCurrency(monthlyTotal)}
-Amount Due Today: ${formatCurrency(dueTodayTotal)}
+Total Monthly Estimate: ${formatCurrencyForCopy(monthlyTotalInCents)}
+Amount Due Today: ${formatCurrencyForCopy(dueTodayTotalInCents)}
         `.trim().replace(/^\s+/gm, '');
     }).join('\n\n================================\n\n');
 
@@ -153,7 +207,7 @@ Amount Due Today: ${formatCurrency(dueTodayTotal)}
               onDelete={onDelete}
               planPricing={planPricing}
               discountSettings={discountSettings}
-              insurancePricing={insurancePricing}
+              insurancePlans={insurancePlans}
            />
         </div>
       </div>

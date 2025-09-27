@@ -1,4 +1,4 @@
-import { InsuranceTier, CustomerType, PlanPricingData, InsurancePricingData } from './types';
+import { CustomerType, PlanPricingData, InsurancePlan } from './types';
 
 export const PLAN_PRICING: PlanPricingData = {
   'go5g': {
@@ -24,17 +24,7 @@ export const PLAN_PRICING: PlanPricingData = {
   },
 };
 
-export const INSURANCE_PRICING: InsurancePricingData = {
-    [InsuranceTier.NONE]: {
-        name: 'None',
-        price: 0,
-    },
-    [InsuranceTier.BASIC]: {
-        name: 'Basic Device Protection',
-        price: 12,
-    },
-    [InsuranceTier.P360]: {
-        name: 'Protection <360>',
-        price: 18,
-    },
-};
+export const INITIAL_INSURANCE_PLANS: InsurancePlan[] = [
+    { id: 'basic', name: 'Basic Device Protection', price: 12 },
+    { id: 'p360', name: 'Protection <360>', price: 18 },
+];

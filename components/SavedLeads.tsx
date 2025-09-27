@@ -1,17 +1,13 @@
 import React, { useState } from 'react';
-import { SavedLead, PlanPricingData, Device, DiscountSettings, CustomerType, InsurancePricingData } from '../types';
+import { SavedLead, PlanPricingData, Device, DiscountSettings, CustomerType, InsurancePlan, TradeInType, AccessoryPaymentType } from '../types';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/Card';
 
-interface SavedLeadsProps {
-  leads: SavedLead[];
-  onLoad: (lead: SavedLead) => void;
-  onDelete: (leadId: string) => void;
-  planPricing: PlanPricingData;
-  discountSettings: DiscountSettings;
-  insurancePricing: InsurancePricingData;
-}
-
-const formatCurrency = (amount: number) => amount.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+const formatCurrency = (amountInCents: number) => {
+    return (amountInCents / 100).toLocaleString(navigator.language, {
+        style: 'currency',
+        currency: 'USD'
+    });
+};
 
 const getCustomerTypeLabel = (type: CustomerType) => {
     switch (type) {
@@ -22,47 +18,87 @@ const getCustomerTypeLabel = (type: CustomerType) => {
     }
 };
 
-const DetailRow: React.FC<{ label: string; value: React.ReactNode }> = ({ label, value }) => (
-  <div className="flex justify-between items-start text-sm">
+const DetailRow: React.FC<{ label: string; value: React.ReactNode; isSubtle?: boolean; valueClassName?: string }> = ({ label, value, isSubtle = false, valueClassName = '' }) => (
+  <div className={`flex justify-between items-start text-sm ${isSubtle ? 'pl-4' : ''}`}>
     <p className="text-slate-500 dark:text-slate-400 flex-shrink-0 mr-2">{label}</p>
-    <p className="font-medium text-slate-800 dark:text-slate-100 text-right">{value}</p>
+    <p className={`font-medium text-slate-800 dark:text-slate-100 text-right ${valueClassName}`}>{value}</p>
   </div>
 );
 
 
-const LeadCard: React.FC<{ lead: SavedLead; planPricing: PlanPricingData; onLoad: (lead: SavedLead) => void; onDelete: (leadId: string) => void; discountSettings: DiscountSettings; insurancePricing: InsurancePricingData;}> = ({ lead, planPricing, onLoad, onDelete, discountSettings, insurancePricing }) => {
+const LeadCard: React.FC<{ lead: SavedLead; planPricing: PlanPricingData; onLoad: (lead: SavedLead) => void; onDelete: (leadId: string) => void; discountSettings: DiscountSettings; insurancePlans: InsurancePlan[];}> = ({ lead, planPricing, onLoad, onDelete, discountSettings, insurancePlans }) => {
     const [copied, setCopied] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(false);
 
     const planDetails = planPricing[lead.plan];
     if (!planDetails) return null; // Or render an error state
 
-    // Recalculate totals for display
-    const basePlanPrice = planDetails.price[lead.lines - 1] || 0;
-    const autopayDiscount = lead.discounts.autopay ? lead.lines * discountSettings.autopay : 0;
-    const insiderDiscount = lead.discounts.insider ? basePlanPrice * (discountSettings.insider / 100) : 0;
-    let thirdLineFreeDiscount = 0;
+    // --- Recalculate totals for display using cents for precision ---
+    const toCents = (dollars: number) => Math.round(dollars * 100);
+
+    const basePlanPriceInCents = toCents(planDetails.price[lead.lines - 1] || 0);
+    const autopayDiscountInCents = lead.discounts.autopay ? toCents(lead.lines * discountSettings.autopay) : 0;
+    const insiderDiscountValue = basePlanPriceInCents * (discountSettings.insider / 100);
+    const insiderDiscountInCents = lead.discounts.insider ? Math.round(insiderDiscountValue) : 0;
+    let thirdLineFreeDiscountInCents = 0;
     if (lead.discounts.thirdLineFree && lead.lines >= 3) {
       const twoLinePrice = planDetails.price[1] || 0;
       const threeLinePrice = planDetails.price[2] || 0;
-      thirdLineFreeDiscount = threeLinePrice - twoLinePrice;
+      thirdLineFreeDiscountInCents = toCents(threeLinePrice - twoLinePrice);
     }
-    const finalPlanPrice = basePlanPrice - autopayDiscount - insiderDiscount - thirdLineFreeDiscount;
-    const insuranceCost = insurancePricing[lead.insuranceTier].price * lead.lines;
-    const totalDeviceCost = lead.devices.reduce((sum, dev) => sum + (Number(dev.price) || 0), 0);
-    const totalTradeIn = lead.devices.reduce((sum, dev) => sum + (Number(dev.tradeIn) || 0), 0);
-    const netDeviceCost = totalDeviceCost - totalTradeIn;
-    const monthlyDevicePayment = netDeviceCost > 0 ? netDeviceCost / 24 : 0;
-    let calculatedTaxes = 0;
+    const totalDiscountsInCents = autopayDiscountInCents + insiderDiscountInCents + thirdLineFreeDiscountInCents;
+    const finalPlanPriceInCents = basePlanPriceInCents - totalDiscountsInCents;
+
+    const insuranceLines = lead.insuranceLines ?? (lead.insuranceTier && lead.insuranceTier !== 'none' ? lead.lines : 0);
+    const insuranceDetails = lead.insuranceTier === 'none'
+      ? { id: 'none', name: 'None', price: 0 }
+      : insurancePlans.find(p => p.id === lead.insuranceTier) || { id: 'not-found', name: 'N/A', price: 0 };
+    const insuranceCostInCents = toCents(insuranceDetails.price * insuranceLines);
+    
+    const totalDeviceCostInCents = (lead.devices || []).reduce((sum, dev) => sum + toCents(Number(dev.price) || 0), 0);
+    const lumpSumTradeInInCents = (lead.devices || [])
+        .filter(dev => (dev.tradeInType ?? TradeInType.LUMP_SUM) === TradeInType.LUMP_SUM)
+        .reduce((sum, dev) => sum + toCents(Number(dev.tradeIn) || 0), 0);
+    const monthlyCreditTradeInInCents = (lead.devices || [])
+        .filter(dev => dev.tradeInType === TradeInType.MONTHLY_CREDIT)
+        .reduce((sum, dev) => sum + toCents(Number(dev.tradeIn) || 0), 0);
+
+    const monthlyDevicePaymentInCents = totalDeviceCostInCents > 0 ? Math.round(totalDeviceCostInCents / 24) : 0;
+    const monthlyTradeInCreditInCents = monthlyCreditTradeInInCents > 0 ? Math.round(monthlyCreditTradeInInCents / 24) : 0;
+
+    const safeAccessories = (lead.accessories || []).map(acc => ({ ...acc, quantity: acc.quantity || 1 }));
+    const paidInFullAccessories = safeAccessories.filter(acc => acc.paymentType === AccessoryPaymentType.FULL);
+    const financedAccessories = safeAccessories.filter(acc => acc.paymentType === AccessoryPaymentType.FINANCED);
+
+    const paidInFullAccessoriesCostInCents = paidInFullAccessories
+      .reduce((sum, acc) => sum + toCents(acc.price * acc.quantity), 0);
+    const paidInFullAccessoriesTaxInCents = Math.round(paidInFullAccessoriesCostInCents * ((Number(lead.taxRate) || 0) / 100));
+    
+    const financedAccessoriesCostInCents = financedAccessories
+      .reduce((sum, acc) => sum + toCents(acc.price * acc.quantity), 0);
+    const financedAccessoriesTaxInCents = Math.round(financedAccessoriesCostInCents * ((Number(lead.taxRate) || 0) / 100));
+    const financedAccessoriesMonthlyCostInCents = financedAccessoriesCostInCents > 0 ? Math.round(financedAccessoriesCostInCents / 12) : 0;
+
+
+    let calculatedTaxesInCents = 0;
     if (!planDetails.taxesIncluded) {
-      const insurancePricePerLine = insurancePricing[lead.insuranceTier].price;
-      for (let i = 0; i < lead.lines; i++) {
-        const costOfThisLine = i === 0 ? planDetails.price[0] : planDetails.price[i] - planDetails.price[i - 1];
-        const taxableAmountForLine = costOfThisLine + insurancePricePerLine;
-        calculatedTaxes += taxableAmountForLine * ((Number(lead.taxRate) || 0) / 100);
-      }
+        const monthlyPlanCostBeforeDiscounts = basePlanPriceInCents;
+        const monthlyInsuranceCost = insuranceCostInCents;
+        const taxableMonthlyAmountInCents = monthlyPlanCostBeforeDiscounts + monthlyInsuranceCost;
+        calculatedTaxesInCents = Math.round(taxableMonthlyAmountInCents * ((Number(lead.taxRate) || 0) / 100));
     }
-    const monthlyTotal = finalPlanPrice + monthlyDevicePayment + insuranceCost + calculatedTaxes;
-    const dueTodayTotal = netDeviceCost > 0 ? (netDeviceCost) * ((Number(lead.taxRate) || 0) / 100) : 0;
+    const totalMonthlyAddonsInCents = insuranceCostInCents + monthlyDevicePaymentInCents + financedAccessoriesMonthlyCostInCents - monthlyTradeInCreditInCents;
+    const monthlyTotalInCents = finalPlanPriceInCents + totalMonthlyAddonsInCents + calculatedTaxesInCents;
+
+    const dueTodayDeviceTaxInCents = Math.round(totalDeviceCostInCents * ((Number(lead.taxRate) || 0) / 100));
+    
+    const activationFeeInCents = lead.fees?.activation ? toCents(lead.lines * 10) : 0;
+    const upgradeFeeInCents = lead.fees?.upgrade ? toCents(lead.lines * 35) : 0;
+    const totalOneTimeFeesInCents = activationFeeInCents + upgradeFeeInCents;
+    const dueTodayFeesTaxInCents = Math.round(totalOneTimeFeesInCents * ((Number(lead.taxRate) || 0) / 100));
+
+    const dueTodayTotalInCents = dueTodayDeviceTaxInCents - lumpSumTradeInInCents + totalOneTimeFeesInCents + dueTodayFeesTaxInCents + paidInFullAccessoriesCostInCents + paidInFullAccessoriesTaxInCents + financedAccessoriesTaxInCents;
+
 
     const appliedDiscounts = Object.entries(lead.discounts).filter(([, val]) => val).map(([key]) => {
         if (key === 'autopay') return 'AutoPay';
@@ -73,6 +109,11 @@ const LeadCard: React.FC<{ lead: SavedLead; planPricing: PlanPricingData; onLoad
 
 
     const handleCopy = () => {
+        const insuranceLabel = insuranceDetails.name;
+        const insuranceText = insuranceLines > 0 ? `${insuranceLabel} (${insuranceLines} line${insuranceLines > 1 ? 's' : ''})` : 'None';
+
+        const formatCurrencyForCopy = (amountInCents: number) => (amountInCents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+        
         const copyText = `
     *** T-Mobile Quote Summary for ${lead.customerName} ***
     
@@ -83,17 +124,29 @@ const LeadCard: React.FC<{ lead: SavedLead; planPricing: PlanPricingData; onLoad
     --- QUOTE ---
     Customer Type: ${getCustomerTypeLabel(lead.customerType)}
     Plan: ${planDetails.name} for ${lead.lines} line(s)
-    Insurance: ${insurancePricing[lead.insuranceTier]?.name || 'None'}
+    Insurance: ${insuranceText}
+
+    --- FEES ---
+    ${(lead.fees?.activation || lead.fees?.upgrade) ? 
+        [
+            lead.fees?.activation && 'Activation Fee ($10/line)',
+            lead.fees?.upgrade && 'Upgrade Fee ($35/line)'
+        ].filter(Boolean).join('\n')
+        : 'No one-time fees'
+    }
     
-    --- DEVICES (${lead.devices.length}) ---
-    ${lead.devices.length > 0 ? lead.devices.map((dev, i) => `Device ${i + 1}: ${formatCurrency(dev.price)} (Trade-in: ${formatCurrency(dev.tradeIn)})`).join('\n') : 'No devices'}
+    --- DEVICES (${(lead.devices || []).length}) ---
+    ${(lead.devices || []).length > 0 ? lead.devices.map((dev, i) => `Device ${i + 1}: ${formatCurrencyForCopy(toCents(dev.price))} (Trade-in: ${formatCurrencyForCopy(toCents(dev.tradeIn))} applied as ${dev.tradeInType === TradeInType.MONTHLY_CREDIT ? 'Monthly Credit' : 'Upfront Credit'})`).join('\n') : 'No devices'}
     
+    --- ACCESSORIES (${(lead.accessories || []).length}) ---
+    ${(lead.accessories || []).length > 0 ? lead.accessories.map((acc, i) => `Accessory ${i + 1}: ${acc.name || 'Unnamed'} (x${acc.quantity || 1}) - ${formatCurrencyForCopy(toCents(acc.price))} (${acc.paymentType === AccessoryPaymentType.FINANCED ? 'Financed' : 'Paid in Full'})`).join('\n') : 'No accessories'}
+
     --- DISCOUNTS ---
     ${appliedDiscounts.length > 0 ? appliedDiscounts.join(', ') : 'None'}
     
     --- PRICING ---
-    Total Monthly Estimate: ${formatCurrency(monthlyTotal)}
-    Amount Due Today: ${formatCurrency(dueTodayTotal)}
+    Total Monthly Estimate: ${formatCurrencyForCopy(monthlyTotalInCents)}
+    Amount Due Today: ${formatCurrencyForCopy(dueTodayTotalInCents)}
     
     --- PREPARED BY ---
     Ahmed Khogali
@@ -106,72 +159,112 @@ const LeadCard: React.FC<{ lead: SavedLead; planPricing: PlanPricingData; onLoad
         });
     };
 
+    const insuranceLabel = insuranceDetails.name;
+    const insuranceText = insuranceLines > 0 ? `${insuranceLabel} (${insuranceLines} line${insuranceLines > 1 ? 's' : ''})` : 'None';
+
     return (
         <Card>
-            <CardHeader>
-                <div className="flex justify-between items-center">
-                    <div>
-                        <CardTitle>{lead.customerName || "Unnamed Lead"}</CardTitle>
-                        <p className="text-sm text-slate-500 dark:text-slate-400">{lead.customerPhone || "No phone number"} &middot; {new Date(lead.createdAt).toLocaleDateString()}</p>
-                    </div>
-                    <div className="flex items-center space-x-1 flex-shrink-0 bg-slate-100 dark:bg-slate-700/50 p-1 rounded-lg">
-                         <button onClick={() => onLoad(lead)} className="p-1.5 rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:text-slate-100 transition-colors" title="Load Lead"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 20h5v-5M20 4h-5v5" /></svg></button>
-                         <button onClick={handleCopy} className="p-1.5 rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:text-slate-100 transition-colors" title="Copy Info">
-                            {copied ? (
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                            ) : (
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
-                            )}
-                         </button>
-                         <button onClick={() => onDelete(lead.id)} className="p-1.5 rounded-md text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors" title="Delete Lead"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
-                    </div>
+            <div className="flex justify-between items-start p-4">
+                 <div className="flex-grow">
+                    <CardTitle className="mb-1">{lead.customerName || "Unnamed Lead"}</CardTitle>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">{lead.customerPhone || "No phone number"} &middot; {new Date(lead.createdAt).toLocaleDateString()}</p>
                 </div>
-            </CardHeader>
-            <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4">
-                <div className="md:col-span-2 space-y-4">
-                    <div>
-                        <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-2">Configuration</h4>
-                        <div className="space-y-1.5 border-l-2 border-slate-200 dark:border-slate-700 pl-3">
-                            <DetailRow label="Plan" value={`${planDetails.name} (${lead.lines} lines)`} />
-                            <DetailRow label="Customer Type" value={getCustomerTypeLabel(lead.customerType)} />
-                            <DetailRow label="Insurance" value={insurancePricing[lead.insuranceTier]?.name || 'None'} />
-                        </div>
-                    </div>
-                     {appliedDiscounts.length > 0 && (
-                        <div>
-                            <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-2">Discounts</h4>
-                            <div className="space-y-1.5 border-l-2 border-slate-200 dark:border-slate-700 pl-3">
-                                {appliedDiscounts.map(disc => <DetailRow key={disc} label={disc} value="Applied" />)}
-                            </div>
-                        </div>
-                    )}
-                     {lead.devices.length > 0 && (
-                        <div>
-                            <h4 className="text-sm font-semibold text-slate-800 dark:text-slate-100 mb-2">Devices ({lead.devices.length})</h4>
-                            <div className="space-y-1.5 border-l-2 border-slate-200 dark:border-slate-700 pl-3">
-                                {lead.devices.map((dev: Device, i: number) => 
-                                    <DetailRow key={i} label={`Device ${i+1}`} value={`${formatCurrency(dev.price)} (Trade: ${formatCurrency(dev.tradeIn)})`} />
-                                )}
-                            </div>
-                        </div>
-                    )}
+                <div className="flex items-center space-x-1 flex-shrink-0 bg-slate-100 dark:bg-slate-700/50 p-1 rounded-lg ml-2">
+                     <button onClick={() => onLoad(lead)} className="p-1.5 rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:text-slate-100 transition-colors" title="Load Lead"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 20h5v-5M20 4h-5v5" /></svg></button>
+                     <button onClick={handleCopy} className="p-1.5 rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:text-slate-100 transition-colors" title="Copy Info">
+                        {copied ? (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                        ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
+                        )}
+                     </button>
+                     <button onClick={() => onDelete(lead.id)} className="p-1.5 rounded-md text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors" title="Delete Lead"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                 </div>
-                <div className="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-4 flex flex-col justify-center space-y-4">
-                    <div className="text-center">
+            </div>
+            <CardContent className="pt-0">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg p-4">
+                     <div className="text-center">
                         <p className="text-sm text-slate-500 dark:text-slate-400">Est. Monthly Total</p>
-                        <p className="text-2xl font-bold text-tmobile-magenta">{formatCurrency(monthlyTotal)}</p>
+                        <p className="text-2xl font-bold text-tmobile-magenta">{formatCurrency(monthlyTotalInCents)}</p>
                     </div>
                      <div className="text-center">
                         <p className="text-sm text-slate-500 dark:text-slate-400">Est. Due Today</p>
-                        <p className="text-lg font-semibold text-slate-800 dark:text-slate-100">{formatCurrency(dueTodayTotal)}</p>
+                        <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">{formatCurrency(dueTodayTotalInCents)}</p>
                     </div>
+                </div>
+
+                <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+                    <div className="overflow-hidden">
+                        <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-4">
+                            {/* Monthly Breakdown */}
+                            <div>
+                                <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-2">Monthly Breakdown</h4>
+                                <div className="space-y-1.5 pl-2 border-l-2 border-slate-200 dark:border-slate-700">
+                                    <DetailRow label={`${planDetails.name} (${lead.lines} Line${lead.lines > 1 ? 's' : ''})`} value={formatCurrency(basePlanPriceInCents)} />
+                                    {autopayDiscountInCents > 0 && <DetailRow label="AutoPay Discount" value={`-${formatCurrency(autopayDiscountInCents)}`} valueClassName="text-green-600 dark:text-green-400" />}
+                                    {insiderDiscountInCents > 0 && <DetailRow label="Insider Discount" value={`-${formatCurrency(insiderDiscountInCents)}`} valueClassName="text-green-600 dark:text-green-400" />}
+                                    {thirdLineFreeDiscountInCents > 0 && <DetailRow label="3rd Line Free" value={`-${formatCurrency(thirdLineFreeDiscountInCents)}`} valueClassName="text-green-600 dark:text-green-400" />}
+                                    
+                                    {insuranceCostInCents > 0 && <DetailRow label={`Insurance (${insuranceDetails.name})`} value={formatCurrency(insuranceCostInCents)} />}
+                                    {monthlyDevicePaymentInCents > 0 && <DetailRow label="Device Financing" value={formatCurrency(monthlyDevicePaymentInCents)} />}
+                                    {financedAccessories.map(acc => {
+                                        const monthlyPaymentInCents = Math.round(toCents(acc.price * (acc.quantity || 1)) / 12);
+                                        return <DetailRow key={acc.id} label={`Financed: ${acc.name} (x${acc.quantity})`} value={formatCurrency(monthlyPaymentInCents)} isSubtle />
+                                    })}
+                                    {monthlyTradeInCreditInCents > 0 && <DetailRow label="Monthly Trade-in Credit" value={`-${formatCurrency(monthlyTradeInCreditInCents)}`} valueClassName="text-green-600 dark:text-green-400" />}
+                                    
+                                    <DetailRow label="Est. Taxes & Fees" value={planDetails.taxesIncluded ? "Included" : formatCurrency(calculatedTaxesInCents)} />
+                                </div>
+                            </div>
+
+                             {/* Due Today Breakdown */}
+                            {dueTodayTotalInCents > 0 && (
+                            <div>
+                                <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-2">Due Today Breakdown</h4>
+                                <div className="space-y-1.5 pl-2 border-l-2 border-slate-200 dark:border-slate-700">
+                                    {activationFeeInCents > 0 && <DetailRow label="Activation Fee" value={formatCurrency(activationFeeInCents)} />}
+                                    {upgradeFeeInCents > 0 && <DetailRow label="Upgrade Fee" value={formatCurrency(upgradeFeeInCents)} />}
+                                    {paidInFullAccessories.map(acc => (
+                                        <DetailRow key={acc.id} label={`Paid in Full: ${acc.name} (x${acc.quantity})`} value={formatCurrency(toCents(acc.price * acc.quantity))} />
+                                    ))}
+                                    {dueTodayDeviceTaxInCents > 0 && <DetailRow label="Device Tax" value={formatCurrency(dueTodayDeviceTaxInCents)} />}
+                                    {dueTodayFeesTaxInCents > 0 && <DetailRow label="Fee Tax" value={formatCurrency(dueTodayFeesTaxInCents)} />}
+                                    {paidInFullAccessoriesTaxInCents > 0 && <DetailRow label="Accessory Tax (Paid)" value={formatCurrency(paidInFullAccessoriesTaxInCents)} />}
+                                    {financedAccessoriesTaxInCents > 0 && <DetailRow label="Accessory Tax (Financed)" value={formatCurrency(financedAccessoriesTaxInCents)} />}
+                                    {lumpSumTradeInInCents > 0 && <DetailRow label="Upfront Credit" value={`-${formatCurrency(lumpSumTradeInInCents)}`} valueClassName="text-green-600 dark:text-green-400" />}
+                                </div>
+                            </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+                 <div className="text-center pt-4">
+                    <button 
+                        onClick={() => setIsExpanded(prev => !prev)}
+                        className="flex items-center justify-center w-full sm:w-auto mx-auto space-x-2 text-sm font-semibold text-tmobile-magenta hover:text-pink-700 dark:hover:text-pink-500 transition-colors"
+                        aria-expanded={isExpanded}
+                    >
+                        <span>{isExpanded ? 'Hide Details' : 'Show Details'}</span>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={`w-4 h-4 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                        </svg>
+                    </button>
                 </div>
             </CardContent>
         </Card>
     )
 }
 
-const SavedLeads: React.FC<SavedLeadsProps> = ({ leads, onLoad, onDelete, planPricing, discountSettings, insurancePricing }) => {
+interface SavedLeadsProps {
+  leads: SavedLead[];
+  onLoad: (lead: SavedLead) => void;
+  onDelete: (leadId: string) => void;
+  planPricing: PlanPricingData;
+  discountSettings: DiscountSettings;
+  insurancePlans: InsurancePlan[];
+}
+
+const SavedLeads: React.FC<SavedLeadsProps> = ({ leads, onLoad, onDelete, planPricing, discountSettings, insurancePlans }) => {
   return (
     <>
       {leads.length === 0 ? (
@@ -185,7 +278,7 @@ const SavedLeads: React.FC<SavedLeadsProps> = ({ leads, onLoad, onDelete, planPr
       ) : (
         <div className="space-y-4">
           {leads.map(lead => (
-            <LeadCard key={lead.id} lead={lead} planPricing={planPricing} onLoad={onLoad} onDelete={onDelete} discountSettings={discountSettings} insurancePricing={insurancePricing} />
+            <LeadCard key={lead.id} lead={lead} planPricing={planPricing} onLoad={onLoad} onDelete={onDelete} discountSettings={discountSettings} insurancePlans={insurancePlans} />
           ))}
         </div>
       )}
