@@ -1,6 +1,6 @@
+
 import React, { useEffect } from 'react';
-// FIX: Import PlanDetails to be used for explicit type casting.
-import { QuoteConfig, CustomerType, PlanPricingData, PlanDetails, DiscountSettings, InsurancePlan, TradeInType, QuoteFees, Accessory, AccessoryPaymentType } from '../types';
+import { QuoteConfig, CustomerType, PlanPricingData, PlanDetails, DiscountSettings, InsurancePlan, TradeInType, QuoteFees, Accessory, AccessoryPaymentType, Device } from '../types';
 import { Card, CardHeader, CardTitle, CardContent } from './ui/Card';
 import Input from './ui/Input';
 import Select from './ui/Select';
@@ -15,6 +15,18 @@ interface QuoteFormProps {
   discountSettings: DiscountSettings;
   insurancePlans: InsurancePlan[];
 }
+
+// FIX: Defined the missing `Section` component.
+const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+  <Card>
+    <CardHeader className="border-b border-border">
+      <CardTitle>{title}</CardTitle>
+    </CardHeader>
+    <CardContent>
+      {children}
+    </CardContent>
+  </Card>
+);
 
 const QuoteForm: React.FC<QuoteFormProps> = ({ config, setConfig, planPricing, discountSettings, insurancePlans }) => {
   const planDetails = planPricing[config.plan];
@@ -62,6 +74,27 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ config, setConfig, planPricing, d
       }));
     }
   }, [config.customerType, config.discounts.insider, setConfig]);
+  
+  // Automatically switch accessory payment type to "Full" if EC limit is reached by devices
+  useEffect(() => {
+    const availableFinancingLimit = Math.min(config.maxEC || 0, (config.perLineEC || 0) * config.lines);
+    const totalDevicePrice = config.devices.reduce((sum, device) => sum + (device.price || 0) - (device.downPayment || 0), 0);
+    const remainingFinancingCredit = availableFinancingLimit - totalDevicePrice;
+
+    if (remainingFinancingCredit <= 0) {
+      const needsUpdate = (config.accessories || []).some(acc => acc.paymentType === AccessoryPaymentType.FINANCED);
+      if (needsUpdate) {
+        setConfig(prev => ({
+          ...prev,
+          accessories: prev.accessories.map(acc => 
+            acc.paymentType === AccessoryPaymentType.FINANCED 
+              ? { ...acc, paymentType: AccessoryPaymentType.FULL } 
+              : acc
+          ),
+        }));
+      }
+    }
+  }, [config.maxEC, config.perLineEC, config.lines, config.devices, setConfig]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
@@ -95,7 +128,8 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ config, setConfig, planPricing, d
         },
       }));
     } else {
-      setConfig(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+        const finalValue = type === 'checkbox' ? checked : (type === 'number' ? Number(value) : value);
+        setConfig(prev => ({ ...prev, [name]: finalValue }));
     }
   };
 
@@ -154,10 +188,15 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ config, setConfig, planPricing, d
   };
   
   const handleLinesChange = (increment: number) => {
-    const maxLines = (planPricing[config.plan] && planPricing[config.plan].maxLines) || 8;
+    const planDetails = planPricing[config.plan];
+    if (!planDetails) return;
+
+    const minLines = planDetails.minLines || 1;
+    const maxLines = planDetails.maxLines || 8;
+
     setConfig(prev => {
       const newLines = prev.lines + increment;
-      if (newLines >= 1 && newLines <= maxLines) {
+      if (newLines >= minLines && newLines <= maxLines) {
         return { ...prev, lines: newLines };
       }
       return prev;
@@ -168,7 +207,7 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ config, setConfig, planPricing, d
       if (config.devices.length < config.lines) {
           setConfig(prev => ({
               ...prev,
-              devices: [...prev.devices, { price: 0, tradeIn: 0, tradeInType: TradeInType.MONTHLY_CREDIT }],
+              devices: [...prev.devices, { price: 0, tradeIn: 0, tradeInType: TradeInType.MONTHLY_CREDIT, term: 24, downPayment: 0 }],
           }));
       }
   };
@@ -180,21 +219,32 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ config, setConfig, planPricing, d
       }));
   };
 
-  const handleDeviceChange = (index: number, field: 'price' | 'tradeIn', value: string) => {
+  const handleDeviceChange = (index: number, field: keyof Device, value: string) => {
       const numericValue = Number(value);
       if (!isNaN(numericValue)) {
           setConfig(prev => {
               const newDevices = [...prev.devices];
-              newDevices[index] = { ...newDevices[index], [field]: numericValue };
+              (newDevices[index] as any)[field] = numericValue;
               return { ...prev, devices: newDevices };
           });
       }
   };
 
+  const handleDeviceSelectChange = (index: number, field: keyof Device, value: string) => {
+    const numericValue = Number(value);
+    if (!isNaN(numericValue)) {
+      setConfig(prev => {
+          const newDevices = [...prev.devices];
+          (newDevices[index] as any)[field] = numericValue;
+          return { ...prev, devices: newDevices };
+      });
+    }
+  };
+
   const handleAddAccessory = () => {
     setConfig(prev => ({
         ...prev,
-        accessories: [...(prev.accessories || []), { id: crypto.randomUUID(), name: '', price: 0, paymentType: AccessoryPaymentType.FULL, quantity: 1 }],
+        accessories: [...(prev.accessories || []), { id: crypto.randomUUID(), name: '', price: 0, paymentType: AccessoryPaymentType.FULL, quantity: 1, term: 12, downPayment: 0 }],
     }));
   };
 
@@ -205,12 +255,12 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ config, setConfig, planPricing, d
       }));
   };
 
-  const handleAccessoryChange = (id: string, field: 'name' | 'price' | 'paymentType', value: string) => {
+  const handleAccessoryChange = (id: string, field: keyof Accessory, value: string | AccessoryPaymentType) => {
       setConfig(prev => ({
           ...prev,
           accessories: prev.accessories.map(acc => {
               if (acc.id === id) {
-                  const finalValue = field === 'price' ? Number(value) : value;
+                  const finalValue = (field === 'price' || field === 'downPayment' || field === 'term' || field === 'quantity') ? Number(value) : value;
                   return { ...acc, [field]: finalValue };
               }
               return acc;
@@ -258,10 +308,13 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ config, setConfig, planPricing, d
     });
   };
 
-  // FIX: Explicitly cast Object.entries to resolve issue where planDetails was of type 'unknown'.
   const availablePlans = (Object.entries(planPricing) as [string, PlanDetails][])
     .filter(([, planDetails]) => planDetails.availableFor.includes(config.customerType))
     .map(([planKey, planDetails]) => ({ value: planKey, label: planDetails.name }));
+    
+  const availableFinancingLimit = Math.min(config.maxEC || 0, (config.perLineEC || 0) * config.lines);
+  const totalDevicePrice = config.devices.reduce((sum, device) => sum + (device.price || 0) - (device.downPayment || 0), 0);
+  const remainingFinancingCredit = availableFinancingLimit - totalDevicePrice;
 
 
   return (
@@ -283,21 +336,43 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ config, setConfig, planPricing, d
             placeholder="(555) 123-4567"
           />
         </div>
+        <hr className="my-6 border-border" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+           <Input
+            label="Max Equipment Credit"
+            name="maxEC"
+            type="number"
+            value={config.maxEC}
+            onChange={handleInputChange}
+            prefix="$"
+          />
+           <Input
+            label="Per Line EC"
+            name="perLineEC"
+            type="number"
+            value={config.perLineEC}
+            onChange={handleInputChange}
+            prefix="$"
+          />
+        </div>
       </Section>
 
-      <Section title="Customer Type">
-         <Select
-            label="Customer Type"
-            name="customerType"
-            value={config.customerType}
-            onChange={handleCustomerTypeChange}
-            options={[
-                { value: CustomerType.STANDARD, label: 'Standard Customer' },
-                { value: CustomerType.MILITARY_FR, label: 'Military & FR' },
-                { value: CustomerType.PLUS_55, label: '55+'},
-            ]}
-        />
-      </Section>
+      <Card>
+        <CardHeader className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+            <CardTitle>Customer Type</CardTitle>
+            <Select
+                name="customerType"
+                value={config.customerType}
+                onChange={handleCustomerTypeChange}
+                options={[
+                    { value: CustomerType.STANDARD, label: 'Standard Customer' },
+                    { value: CustomerType.MILITARY_FR, label: 'Military & FR' },
+                    { value: CustomerType.PLUS_55, label: '55+'},
+                ]}
+                className="w-full md:w-auto md:min-w-[240px]"
+            />
+        </CardHeader>
+      </Card>
 
       <Section title="Plan Details">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
@@ -309,40 +384,40 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ config, setConfig, planPricing, d
             options={availablePlans}
           />
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+            <label className="block text-sm font-medium text-muted-foreground mb-2">
               Number of Lines
             </label>
-            <div className="flex items-center justify-between w-full h-[42px] rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-sm px-1">
+            <div className="flex items-center justify-between w-full h-12 rounded-xl bg-muted px-2">
                <button
                 type="button"
                 onClick={() => handleLinesChange(-1)}
-                disabled={config.lines <= 1}
-                className="w-8 h-8 flex items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-tmobile-magenta"
+                disabled={config.lines <= (planPricing[config.plan]?.minLines || 1)}
+                className="w-9 h-9 flex items-center justify-center rounded-full text-muted-foreground hover:bg-border disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
                 aria-label="Decrease number of lines"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M18 12H6" />
                 </svg>
               </button>
-              <div className="text-center font-semibold text-slate-800 dark:text-slate-100">
+              <div className="text-center font-bold text-lg text-foreground w-12">
                 {config.lines}
               </div>
                <button
                 type="button"
                 onClick={() => handleLinesChange(1)}
                 disabled={config.lines >= (planPricing[config.plan]?.maxLines || 8)}
-                className="w-8 h-8 flex items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-tmobile-magenta"
+                className="w-9 h-9 flex items-center justify-center rounded-full text-muted-foreground hover:bg-border disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
                 aria-label="Increase number of lines"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m6-6H6" />
                 </svg>
               </button>
             </div>
           </div>
         </div>
-        <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700">
-            <div className="space-y-3">
+        <div className="mt-6 pt-6 border-t border-border">
+            <div className="space-y-4">
                 <Toggle
                     label="Activation Fee"
                     description="$10 per line, one-time fee"
@@ -358,7 +433,7 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ config, setConfig, planPricing, d
                     onChange={handleInputChange}
                 />
             </div>
-            <hr className="my-4 border-slate-200 dark:border-slate-700 border-dashed" />
+            <hr className="my-6 border-border border-dashed" />
             <Input
               label="Tax Rate"
               type="number"
@@ -371,10 +446,10 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ config, setConfig, planPricing, d
         </div>
       </Section>
       
-      <Section title="Insurance">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-         <Select
-            label="Insurance Tier"
+      <Card>
+        <CardHeader className={`flex flex-col md:flex-row md:justify-between md:items-center gap-4 ${config.insuranceTier !== 'none' ? 'border-b border-border' : ''}`}>
+          <CardTitle>Insurance</CardTitle>
+          <Select
             name="insuranceTier"
             value={config.insuranceTier}
             onChange={handleInsuranceTierChange}
@@ -385,104 +460,115 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ config, setConfig, planPricing, d
                     label: `${plan.name} ($${plan.price}/line)`
                 }))
             ]}
-        />
+            className="w-full md:w-auto md:min-w-[240px]"
+          />
+        </CardHeader>
         {config.insuranceTier !== 'none' && (
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+          <CardContent>
+            <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+              <label className="block text-sm font-medium text-muted-foreground whitespace-nowrap">
                 Lines with Insurance
               </label>
-              <div className="flex items-center justify-between w-full h-[42px] rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-sm px-1">
+              <div className="flex items-center justify-between w-full md:w-auto md:min-w-[160px] h-12 rounded-xl bg-muted px-2">
                  <button
                   type="button"
                   onClick={() => handleInsuranceLinesChange(-1)}
                   disabled={(config.insuranceLines || 0) <= 0}
-                  className="w-8 h-8 flex items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-tmobile-magenta"
+                  className="w-9 h-9 flex items-center justify-center rounded-full text-muted-foreground hover:bg-border disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
                   aria-label="Decrease lines with insurance"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M18 12H6" />
                   </svg>
                 </button>
-                <div className="text-center font-semibold text-slate-800 dark:text-slate-100">
+                <div className="text-center font-bold text-lg text-foreground w-12">
                   {config.insuranceLines || 0}
                 </div>
                  <button
                   type="button"
                   onClick={() => handleInsuranceLinesChange(1)}
                   disabled={(config.insuranceLines || 0) >= config.lines}
-                  className="w-8 h-8 flex items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-tmobile-magenta"
+                  className="w-9 h-9 flex items-center justify-center rounded-full text-muted-foreground hover:bg-border disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
                   aria-label="Increase lines with insurance"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m6-6H6" />
                   </svg>
                 </button>
               </div>
             </div>
-          )}
-        </div>
-      </Section>
+          </CardContent>
+        )}
+      </Card>
 
       <Section title="Device Pricing">
           <div className="space-y-4">
             {config.devices.map((device, index) => (
-                <div key={index} className="p-4 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 space-y-3 relative">
-                    <div className="flex justify-between items-center mb-2">
-                        <p className="font-semibold text-sm text-slate-800 dark:text-slate-100">Device for Line {index + 1}</p>
+                <Card key={index} className="overflow-hidden">
+                    <CardHeader className="flex justify-between items-center bg-muted/50 p-4">
+                        <div className="flex items-center gap-3">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-muted-foreground"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5h3m-6.75 2.25h10.5a2.25 2.25 0 002.25-2.25v-15a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 4.5v15a2.25 2.25 0 002.25 2.25z" /></svg>
+                            <p className="font-semibold text-foreground">Device for Line {index + 1}</p>
+                        </div>
                         <button 
                           type="button"
                           onClick={() => handleRemoveDevice(index)}
-                          className="text-slate-400 hover:text-red-500 transition-colors"
+                          className="w-8 h-8 flex items-center justify-center rounded-full text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
                           aria-label={`Remove Device ${index + 1}`}
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.067-2.09.92-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                           </svg>
                         </button>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Input
-                            label="Device Price"
-                            type="number"
-                            name={`device-price-${index}`}
-                            value={device.price}
-                            onChange={(e) => handleDeviceChange(index, 'price', e.target.value)}
-                            prefix="$"
-                        />
-                        <Input
-                            label="Trade-in Value"
-                            type="number"
-                            name={`device-tradein-${index}`}
-                            value={device.tradeIn}
-                            onChange={(e) => handleDeviceChange(index, 'tradeIn', e.target.value)}
-                            prefix="$"
-                        />
-                    </div>
-                    {device.tradeIn > 0 && (
-                        <div className="pt-2">
-                            <p className="text-sm text-slate-500 dark:text-slate-400">
-                                {device.tradeInType === TradeInType.MONTHLY_CREDIT
-                                    ? 'Trade-in value will be applied as a monthly credit over 24 months.'
-                                    : 'Trade-in value will be applied as an upfront credit.'}
-                            </p>
-                        </div>
-                    )}
-                </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <Input
+                              label="Device Price" type="number" name={`device-price-${index}`}
+                              value={device.price} onChange={(e) => handleDeviceChange(index, 'price', e.target.value)} prefix="$"
+                          />
+                           <Input
+                              label="Trade-in Value" type="number" name={`device-tradein-${index}`}
+                              value={device.tradeIn} onChange={(e) => handleDeviceChange(index, 'tradeIn', e.target.value)} prefix="$"
+                          />
+                      </div>
+                      {device.tradeIn > 0 && (
+                          <div className="pt-2 text-xs text-muted-foreground">
+                            Trade-in value will be applied as a monthly credit over 24 months.
+                          </div>
+                      )}
+                      <hr className="border-border/50" />
+                      <div>
+                          <p className="text-sm font-semibold text-muted-foreground mb-3">Financing Details</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                             <Select
+                                  label="Installment Term" name={`device-term-${index}`} value={String(device.term)}
+                                  onChange={(_name, value) => handleDeviceSelectChange(index, 'term', value)}
+                                  options={[ { value: '24', label: '24 Months' }, { value: '36', label: '36 Months' } ]}
+                              />
+                               <Input
+                                  label="Optional Down Payment" type="number" name={`device-downPayment-${index}`}
+                                  value={device.downPayment} onChange={(e) => handleDeviceChange(index, 'downPayment', e.target.value)} prefix="$"
+                              />
+                          </div>
+                      </div>
+                    </CardContent>
+                </Card>
             ))}
              {config.devices.length < config.lines && (
                 <button 
                   type="button"
                   onClick={handleAddDevice}
-                  className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:border-tmobile-magenta hover:text-tmobile-magenta dark:hover:border-tmobile-magenta dark:hover:text-tmobile-magenta transition-colors duration-200"
+                  className="w-full flex items-center justify-center space-x-2 py-3 px-4 rounded-xl border-2 border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors duration-200"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5h3m-6.75 2.25h10.5a2.25 2.25 0 002.25-2.25v-15a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 4.5v15a2.25 2.25 0 002.25 2.25z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
                   </svg>
-                  <span>Add Device ({config.devices.length}/{config.lines})</span>
+                  <span className="font-semibold">Add Device ({config.devices.length}/{config.lines})</span>
                 </button>
             )}
              {config.devices.length === 0 && config.lines > 0 && (
-                 <div className="text-center py-4 text-sm text-slate-500 dark:text-slate-400">
+                 <div className="text-center py-4 text-sm text-muted-foreground">
                      No devices added. Click the button above to include hardware in the quote.
                  </div>
             )}
@@ -491,157 +577,155 @@ const QuoteForm: React.FC<QuoteFormProps> = ({ config, setConfig, planPricing, d
 
       <Section title="Accessories">
           <div className="space-y-4">
-              {(config.accessories || []).map((accessory, index) => (
-                  <div key={accessory.id} className="p-4 rounded-lg bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 space-y-3 relative">
-                      <div className="flex justify-between items-center mb-2">
-                          <p className="font-semibold text-sm text-slate-800 dark:text-slate-100">Accessory #{index + 1}</p>
+              {(config.accessories || []).map((accessory) => {
+                  const isFinancingDisabled = remainingFinancingCredit <= 0;
+                  return (
+                  <Card key={accessory.id} className="overflow-hidden">
+                      <CardHeader className="flex justify-between items-center bg-muted/50 p-4">
+                          <div className="flex items-center gap-3">
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 text-muted-foreground"><path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" /><path strokeLinecap="round" strokeLinejoin="round" d="M6 6h.008v.008H6V6z" /></svg>
+                              <p className="font-semibold text-foreground">Accessory Details</p>
+                          </div>
                           <button 
                             type="button"
                             onClick={() => handleRemoveAccessory(accessory.id)}
-                            className="text-slate-400 hover:text-red-500 transition-colors"
-                            aria-label={`Remove Accessory ${index + 1}`}
+                            className="w-8 h-8 flex items-center justify-center rounded-full text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                            aria-label={`Remove Accessory`}
                           >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.134-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.067-2.09.92-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                            </svg>
+                           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
                           </button>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <Input
-                              label="Accessory Name"
-                              type="text"
-                              name={`accessory-name-${index}`}
-                              value={accessory.name}
-                              onChange={(e) => handleAccessoryChange(accessory.id, 'name', e.target.value)}
-                              placeholder="e.g. Case, Screen Protector"
+                      </CardHeader>
+                      <CardContent className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Input
+                                label="Accessory Name" type="text" value={accessory.name}
+                                onChange={(e) => handleAccessoryChange(accessory.id, 'name', e.target.value)}
+                                placeholder="e.g. Case, Charger"
+                            />
+                            <Input
+                                label="Total Price" type="number" value={accessory.price}
+                                onChange={(e) => handleAccessoryChange(accessory.id, 'price', e.target.value)}
+                                prefix="$"
+                            />
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                          <ButtonGroup
+                            label="Payment Option" name={`accessory-payment-${accessory.id}`} value={accessory.paymentType}
+                            onChange={(_name, value) => handleAccessoryChange(accessory.id, 'paymentType', value as AccessoryPaymentType)}
+                            options={[
+                              { value: AccessoryPaymentType.FULL, label: 'Pay in Full' },
+                              { 
+                                value: AccessoryPaymentType.FINANCED, 
+                                label: isFinancingDisabled ? 'Finance (EC Used)' : 'Finance',
+                                disabled: isFinancingDisabled,
+                              },
+                            ]}
+                            className="grid-cols-2"
                           />
-                          <Input
-                              label="Accessory Price"
-                              type="number"
-                              name={`accessory-price-${index}`}
-                              value={accessory.price}
-                              onChange={(e) => handleAccessoryChange(accessory.id, 'price', e.target.value)}
-                              prefix="$"
-                          />
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                        <ButtonGroup
-                          label="Payment Option"
-                          name={`accessory-payment-${index}`}
-                          value={accessory.paymentType}
-                          onChange={(_name, value) => handleAccessoryChange(accessory.id, 'paymentType', value)}
-                          options={[
-                            { value: AccessoryPaymentType.FULL, label: 'Pay in Full' },
-                            { value: AccessoryPaymentType.FINANCED, label: 'Finance (12 mo)' },
-                          ]}
-                          className="grid-cols-2"
-                        />
-                        <div>
-                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                            Quantity
-                          </label>
-                          <div className="flex items-center justify-between w-full h-[42px] rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-sm px-1">
-                            <button
-                              type="button"
-                              onClick={() => handleAccessoryQuantityChange(accessory.id, -1)}
-                              disabled={accessory.quantity <= 1}
-                              className="w-8 h-8 flex items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-tmobile-magenta"
-                              aria-label="Decrease accessory quantity"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M18 12H6" /></svg>
-                            </button>
-                            <div className="text-center font-semibold text-slate-800 dark:text-slate-100">
-                              {accessory.quantity}
+                          <div>
+                            <label className="block text-sm font-medium text-muted-foreground mb-2">
+                              Quantity
+                            </label>
+                            <div className="flex items-center justify-between w-full h-12 rounded-xl bg-muted px-2">
+                              <button
+                                type="button"
+                                onClick={() => handleAccessoryQuantityChange(accessory.id, -1)}
+                                disabled={(accessory.quantity || 1) <= 1}
+                                className="w-9 h-9 flex items-center justify-center rounded-full text-muted-foreground hover:bg-border disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
+                                aria-label="Decrease accessory quantity"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M18 12H6" />
+                                </svg>
+                              </button>
+                              <div className="text-center font-bold text-lg text-foreground w-12">
+                                  {accessory.quantity || 1}
+                              </div>
+                              <button
+                                  type="button"
+                                  onClick={() => handleAccessoryQuantityChange(accessory.id, 1)}
+                                  className="w-9 h-9 flex items-center justify-center rounded-full text-muted-foreground hover:bg-border disabled:opacity-50 disabled:cursor-not-allowed transition-colors focus:outline-none focus:ring-2 focus:ring-primary"
+                                  aria-label="Increase accessory quantity"
+                              >
+                                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m6-6H6" />
+                                  </svg>
+                              </button>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => handleAccessoryQuantityChange(accessory.id, 1)}
-                              className="w-8 h-8 flex items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-tmobile-magenta"
-                              aria-label="Increase accessory quantity"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m6-6H6" /></svg>
-                            </button>
                           </div>
                         </div>
-                      </div>
-                  </div>
-              ))}
+                        {accessory.paymentType === AccessoryPaymentType.FINANCED && (
+                          <>
+                            <hr className="border-border/50" />
+                            <div>
+                                <p className="text-sm font-semibold text-muted-foreground mb-3">Financing Details</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <Select
+                                    label="Financing Term" name={`accessory-term-${accessory.id}`} value={String(accessory.term)}
+                                    onChange={(_name, value) => handleAccessoryChange(accessory.id, 'term', value)}
+                                    options={[ { value: '12', label: '12 Months' }, { value: '24', label: '24 Months' } ]}
+                                  />
+                                  <Input
+                                      label="Optional Down Payment" type="number" value={accessory.downPayment}
+                                      onChange={(e) => handleAccessoryChange(accessory.id, 'downPayment', e.target.value)}
+                                      prefix="$"
+                                  />
+                                </div>
+                            </div>
+                          </>
+                        )}
+                      </CardContent>
+                  </Card>
+                );
+              })}
               <button 
-                type="button"
-                onClick={handleAddAccessory}
-                className="w-full flex items-center justify-center space-x-2 py-2.5 px-4 rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:border-tmobile-magenta hover:text-tmobile-magenta dark:hover:border-tmobile-magenta dark:hover:text-tmobile-magenta transition-colors duration-200"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span>Add Accessory</span>
-              </button>
+                  type="button"
+                  onClick={handleAddAccessory}
+                  className="w-full flex items-center justify-center space-x-2 py-3 px-4 rounded-xl border-2 border-dashed border-border text-muted-foreground hover:border-primary hover:text-primary transition-colors duration-200"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                  <span className="font-semibold">Add Accessory</span>
+                </button>
           </div>
       </Section>
 
       <Section title="Discounts">
-          <div className="space-y-3">
+        <div className="space-y-3">
+          <DiscountOption
+            label="AutoPay Discount"
+            description={`$${discountSettings.autopay} off per line with AutoPay`}
+            name="discounts.autopay"
+            checked={config.discounts.autopay}
+            onChange={handleInputChange}
+            icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.5 3.75h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 21z" /></svg>}
+          />
+          {config.customerType === CustomerType.STANDARD && (
             <DiscountOption
-              name="discounts.autopay"
-              label="AutoPay Discount"
-              description={`$${discountSettings.autopay} off per line with AutoPay`}
-              checked={config.discounts.autopay}
+              label="Insider Code"
+              description={`${discountSettings.insider}% off voice lines`}
+              name="discounts.insider"
+              checked={config.discounts.insider}
               onChange={handleInputChange}
-              icon={
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.5 3.75h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 21z" />
-                </svg>
-              }
+              icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-12v.75m0 3v.75m0 3v.75m0 3V18m-9-12v.75m0 3v.75m0 3v.75m0 3V18m9-12v.75m0 3v.75m0 3v.75m0 3V18m-9-12v.75m0 3v.75m0 3v.75m0 3V18" /></svg>}
             />
-            {config.customerType === CustomerType.STANDARD && (
+          )}
+          {config.lines >= 3 && (
               <DiscountOption
-                name="discounts.insider"
-                label="Insider Code"
-                description={`${discountSettings.insider}% off voice lines`}
-                checked={config.discounts.insider}
-                onChange={handleInputChange}
-                icon={
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h.008v.008H6V6z" />
-                  </svg>
-                }
+                  label="3rd Line Free"
+                  description={`$${thirdLineFreeDiscountValue} off with 3+ lines`}
+                  name="discounts.thirdLineFree"
+                  checked={config.discounts.thirdLineFree}
+                  onChange={handleInputChange}
+                  icon={<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m-7.5-2.28a3 3 0 00-4.682-2.72 8.986 8.986 0 003.741-.479m7.5 2.28a8.986 8.986 0 01-3.741-.479m3.741.479c-.38.04-.77.082-1.17.112a9.022 9.022 0 01-7.5 0c-.398-.03-.79-.071-1.17-.112m7.5 2.28a9.043 9.043 0 01-1.17.112m0 0c-3.14.34-5.804.996-7.5 0l-3.75 3.75m11.25 0l3.75 3.75M3 3h3.75M3 7.5h3.75m-3.75 4.5h3.75m13.5 4.5h3.75m-3.75-4.5h3.75m-3.75-4.5h3.75M3 16.5h3.75" /></svg>}
               />
-            )}
-            {config.lines >= 3 && (
-                <DiscountOption
-                    name="discounts.thirdLineFree"
-                    label="3rd Line Free"
-                    description={`Save $${thirdLineFreeDiscountValue} on your monthly bill`}
-                    checked={config.discounts.thirdLineFree}
-                    onChange={handleInputChange}
-                    icon={
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
-                           <path strokeLinecap="round" strokeLinejoin="round" d="M21 11.25v8.25a1.5 1.5 0 01-1.5 1.5H5.25a1.5 1.5 0 01-1.5-1.5v-8.25M12 4.875A2.625 2.625 0 1014.625 7.5H9.375A2.625 2.625 0 1012 4.875zM21 11.25H3.75" />
-                        </svg>
-                    }
-                />
-            )}
-          </div>
+          )}
+        </div>
       </Section>
     </div>
   );
 };
 
-interface SectionProps {
-    title: string;
-    children: React.ReactNode;
-}
-const Section: React.FC<SectionProps> = ({ title, children }) => (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-      </CardHeader>
-      <CardContent>
-        {children}
-      </CardContent>
-    </Card>
-);
-
-
+// FIX: Added default export.
 export default QuoteForm;

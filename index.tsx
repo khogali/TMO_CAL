@@ -1,7 +1,6 @@
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-// FIX: Changed import path to be more explicit to avoid module resolution issues, although the root cause was App.tsx being a placeholder.
 import App from './App.tsx';
 
 const rootElement = document.getElementById('root');

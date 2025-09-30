@@ -1,5 +1,3 @@
-// FIX: Removed circular dependency where the file was importing a type from itself.
-
 export enum CustomerType {
   STANDARD = 'standard',
   MILITARY_FR = 'military-fr',
@@ -22,6 +20,8 @@ export interface Accessory {
   price: number;
   paymentType: AccessoryPaymentType;
   quantity: number;
+  term: number;
+  downPayment: number;
 }
 
 export interface InsurancePlan {
@@ -45,6 +45,8 @@ export interface Device {
   price: number;
   tradeIn: number;
   tradeInType: TradeInType;
+  term: number;
+  downPayment: number;
 }
 
 export interface QuoteConfig {
@@ -60,6 +62,8 @@ export interface QuoteConfig {
   discounts: QuoteDiscounts;
   fees: QuoteFees;
   taxRate: number;
+  maxEC: number;
+  perLineEC: number;
 }
 
 export interface SavedLead extends QuoteConfig {
@@ -71,6 +75,7 @@ export interface PlanDetails {
   name: string;
   price: number[];
   maxLines: number;
+  minLines?: number;
   availableFor: CustomerType[];
   taxesIncluded: boolean;
 }

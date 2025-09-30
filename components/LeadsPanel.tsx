@@ -1,6 +1,8 @@
+
 import React, { useRef, useEffect, useState } from 'react';
 import { SavedLead, PlanPricingData, DiscountSettings, CustomerType, InsurancePlan, TradeInType, AccessoryPaymentType } from '../types';
 import SavedLeads from './SavedLeads';
+import { calculateQuoteTotals } from '../utils/calculations';
 
 interface LeadsPanelProps {
   leads: SavedLead[];
@@ -38,78 +40,15 @@ const LeadsPanel: React.FC<LeadsPanelProps> = ({ leads, planPricing, onLoad, onD
   const handleBulkCopy = () => {
     if (leads.length === 0) return;
 
-    const toCents = (dollars: number) => Math.round(dollars * 100);
     const formatCurrencyForCopy = (amountInCents: number) => (amountInCents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    const toCents = (dollars: number) => Math.round(dollars * 100);
 
     const allLeadsText = leads.map(lead => {
         const planDetails = planPricing[lead.plan];
-        if (!planDetails) return `*** Incomplete data for lead: ${lead.customerName} ***`;
+        const totals = calculateQuoteTotals(lead, planPricing, discountSettings, insurancePlans);
 
-        const basePlanPriceInCents = toCents(planDetails.price[lead.lines - 1] || 0);
-        const autopayDiscountInCents = lead.discounts.autopay ? toCents(lead.lines * discountSettings.autopay) : 0;
-        const insiderDiscountValue = basePlanPriceInCents * (discountSettings.insider / 100);
-        const insiderDiscountInCents = lead.discounts.insider ? Math.round(insiderDiscountValue) : 0;
-        let thirdLineFreeDiscountInCents = 0;
-        if (lead.discounts.thirdLineFree && lead.lines >= 3) {
-          const twoLinePrice = planDetails.price[1] || 0;
-          const threeLinePrice = planDetails.price[2] || 0;
-          thirdLineFreeDiscountInCents = toCents(threeLinePrice - twoLinePrice);
-        }
-        const finalPlanPriceInCents = basePlanPriceInCents - autopayDiscountInCents - insiderDiscountInCents - thirdLineFreeDiscountInCents;
-        
-        const insuranceLines = lead.insuranceLines ?? (lead.insuranceTier && lead.insuranceTier !== 'none' ? lead.lines : 0);
-        const insuranceDetails = lead.insuranceTier === 'none'
-            ? { id: 'none', name: 'None', price: 0 }
-            : insurancePlans.find(p => p.id === lead.insuranceTier) || { id: 'not-found', name: 'N/A', price: 0 };
-        const insuranceCostInCents = toCents(insuranceDetails.price * insuranceLines);
-        
-        const totalDeviceCostInCents = (lead.devices || []).reduce((sum, dev) => sum + toCents(Number(dev.price) || 0), 0);
-        const lumpSumTradeInInCents = (lead.devices || [])
-            .filter(dev => (dev.tradeInType ?? TradeInType.LUMP_SUM) === TradeInType.LUMP_SUM)
-            .reduce((sum, dev) => sum + toCents(Number(dev.tradeIn) || 0), 0);
-        const monthlyCreditTradeInInCents = (lead.devices || [])
-            .filter(dev => dev.tradeInType === TradeInType.MONTHLY_CREDIT)
-            .reduce((sum, dev) => sum + toCents(Number(dev.tradeIn) || 0), 0);
+        if (!planDetails || !totals) return `*** Incomplete data for lead: ${lead.customerName} ***`;
 
-        const monthlyDevicePaymentInCents = totalDeviceCostInCents > 0 ? Math.round(totalDeviceCostInCents / 24) : 0;
-        const monthlyTradeInCreditInCents = monthlyCreditTradeInInCents > 0 ? Math.round(monthlyCreditTradeInInCents / 24) : 0;
-        
-        const safeAccessories = (lead.accessories || []).map(acc => ({ ...acc, quantity: acc.quantity || 1 }));
-        const paidInFullAccessoriesCostInCents = safeAccessories
-            .filter(acc => acc.paymentType === AccessoryPaymentType.FULL)
-            .reduce((sum, acc) => sum + toCents(acc.price * acc.quantity), 0);
-        const paidInFullAccessoriesTaxInCents = Math.round(paidInFullAccessoriesCostInCents * ((Number(lead.taxRate) || 0) / 100));
-        
-        const financedAccessoriesCostInCents = safeAccessories
-            .filter(acc => acc.paymentType === AccessoryPaymentType.FINANCED)
-            .reduce((sum, acc) => sum + toCents(acc.price * acc.quantity), 0);
-        const financedAccessoriesTaxInCents = Math.round(financedAccessoriesCostInCents * ((Number(lead.taxRate) || 0) / 100));
-        const financedAccessoriesMonthlyCostInCents = financedAccessoriesCostInCents > 0 ? Math.round(financedAccessoriesCostInCents / 12) : 0;
-
-        let calculatedTaxesInCents = 0;
-        if (!planDetails.taxesIncluded) {
-          const insurancePricePerLineInCents = toCents(insuranceDetails.price);
-          const planPricesInCents = planDetails.price.map(toCents);
-          for (let i = 0; i < lead.lines; i++) {
-            const costOfThisLineInCents = i === 0 ? planPricesInCents[0] : planPricesInCents[i] - planPricesInCents[i - 1];
-            let taxableAmountForLineInCents = costOfThisLineInCents;
-            if (i < insuranceLines) {
-                taxableAmountForLineInCents += insurancePricePerLineInCents;
-            }
-            calculatedTaxesInCents += Math.round(taxableAmountForLineInCents * ((Number(lead.taxRate) || 0) / 100));
-          }
-        }
-        const monthlyTotalInCents = finalPlanPriceInCents + monthlyDevicePaymentInCents - monthlyTradeInCreditInCents + insuranceCostInCents + calculatedTaxesInCents + financedAccessoriesMonthlyCostInCents;
-        
-        const dueTodayDeviceTaxInCents = Math.round(totalDeviceCostInCents * ((Number(lead.taxRate) || 0) / 100));
-        
-        const activationFeeInCents = lead.fees?.activation ? toCents(lead.lines * 10) : 0;
-        const upgradeFeeInCents = lead.fees?.upgrade ? toCents(lead.lines * 35) : 0;
-        const totalOneTimeFeesInCents = activationFeeInCents + upgradeFeeInCents;
-        const dueTodayFeesTaxInCents = Math.round(totalOneTimeFeesInCents * ((Number(lead.taxRate) || 0) / 100));
-
-        const dueTodayTotalInCents = dueTodayDeviceTaxInCents - lumpSumTradeInInCents + totalOneTimeFeesInCents + dueTodayFeesTaxInCents + paidInFullAccessoriesCostInCents + paidInFullAccessoriesTaxInCents + financedAccessoriesTaxInCents;
-    
         const appliedDiscounts = Object.entries(lead.discounts).filter(([, val]) => val).map(([key]) => {
             if (key === 'autopay') return 'AutoPay';
             if (key === 'insider') return 'Insider Code';
@@ -117,8 +56,11 @@ const LeadsPanel: React.FC<LeadsPanelProps> = ({ leads, planPricing, onLoad, onD
             return '';
         }).filter(Boolean);
 
-        const insuranceLabel = insuranceDetails.name;
-        const insuranceText = insuranceLines > 0 ? `${insuranceLabel} (${insuranceLines} line${insuranceLines > 1 ? 's' : ''})` : 'None';
+        const insuranceDetails = lead.insuranceTier === 'none'
+            ? { name: 'None' }
+            : insurancePlans.find(p => p.id === lead.insuranceTier) || { name: 'N/A' };
+        const insuranceLines = lead.insuranceLines ?? (lead.insuranceTier && lead.insuranceTier !== 'none' ? lead.lines : 0);
+        const insuranceText = insuranceLines > 0 ? `${insuranceDetails.name} (${insuranceLines} line${insuranceLines > 1 ? 's' : ''})` : 'None';
 
         return `
 *** T-Mobile Quote Summary for ${lead.customerName} ***
@@ -151,8 +93,8 @@ ${(lead.accessories || []).length > 0 ? lead.accessories.map((acc, i) => `Access
 ${appliedDiscounts.length > 0 ? appliedDiscounts.join(', ') : 'None'}
 
 --- PRICING ---
-Total Monthly Estimate: ${formatCurrencyForCopy(monthlyTotalInCents)}
-Amount Due Today: ${formatCurrencyForCopy(dueTodayTotalInCents)}
+Total Monthly Estimate: ${formatCurrencyForCopy(totals.totalMonthlyInCents)}
+Amount Due Today: ${formatCurrencyForCopy(totals.dueTodayInCents)}
         `.trim().replace(/^\s+/gm, '');
     }).join('\n\n================================\n\n');
 
@@ -163,23 +105,23 @@ Amount Due Today: ${formatCurrencyForCopy(dueTodayTotalInCents)}
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/30 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-fade-in-down">
       <div
         ref={modalRef}
-        className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-4xl border border-slate-200 dark:border-slate-700 flex flex-col max-h-[90vh]"
+        className="bg-card rounded-2xl shadow-2xl w-full max-w-4xl border border-border flex flex-col max-h-[90vh]"
       >
-        <div className="p-5 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center flex-shrink-0">
+        <div className="p-5 border-b border-border flex justify-between items-center flex-shrink-0">
           <div className="flex items-center space-x-2">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-tmobile-magenta" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
-            <h2 className="text-lg font-bold text-slate-800 dark:text-white">Lead Management ({leads.length})</h2>
+            <h2 className="text-lg font-bold text-foreground">Lead Management ({leads.length})</h2>
           </div>
           <div className="flex items-center space-x-2">
              <button 
               onClick={handleBulkCopy}
               disabled={leads.length === 0}
-              className="flex items-center space-x-2 text-sm font-semibold text-slate-600 hover:text-tmobile-magenta dark:text-slate-300 dark:hover:text-tmobile-magenta transition-colors disabled:opacity-50 disabled:cursor-not-allowed pr-2"
+              className="hidden sm:flex items-center space-x-2 text-sm font-semibold text-muted-foreground hover:text-primary transition-colors disabled:opacity-50 disabled:cursor-not-allowed pr-2"
             >
               {isBulkCopied ? (
                  <>
@@ -189,18 +131,18 @@ Amount Due Today: ${formatCurrencyForCopy(dueTodayTotalInCents)}
               ) : (
                 <>
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 16v-4.586a1 1 0 00-.293-.707l-6.414-6.414A1 1 0 008.586 4H7a2 2 0 00-2 2v12a2 2 0 002 2h4.586a1 1 0 00.707-.293l6.414-6.414a1 1 0 00.293-.707V16m-6-8h6m-3 3v6" /></svg>
-                  <span>Copy All Leads</span>
+                  <span>Copy All</span>
                 </>
               )}
             </button>
-            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
+            <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
         </div>
-        <div className="p-5 overflow-y-auto bg-slate-50 dark:bg-slate-900/50">
+        <div className="p-5 overflow-y-auto bg-muted">
            <SavedLeads 
               leads={leads}
               onLoad={onLoad}

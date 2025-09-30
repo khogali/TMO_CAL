@@ -6,26 +6,35 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   suffix?: string;
 }
 
-const Input: React.FC<InputProps> = ({ label, prefix, suffix, ...props }) => {
+const Input: React.FC<InputProps> = ({ label, prefix, suffix, name, ...props }) => {
+  const anId = React.useId();
   return (
     <div>
-      <label htmlFor={props.name} className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+      <label htmlFor={anId} className="block text-sm font-medium text-muted-foreground mb-2">
         {label}
       </label>
       <div className="relative">
         {prefix && (
-            <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
-                <span className="text-gray-500 dark:text-gray-400 sm:text-sm">{prefix}</span>
-            </div>
+          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-4">
+            <span className="text-muted-foreground sm:text-sm">{prefix}</span>
+          </div>
         )}
         <input
+          id={anId}
+          name={name}
           {...props}
-          className={`block w-full rounded-lg border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-sm focus:border-tmobile-magenta focus:ring-tmobile-magenta sm:text-sm h-[42px] ${prefix ? 'pl-7' : 'pl-3'} ${suffix ? 'pr-7' : 'pr-3'}`}
+          className={`
+            block w-full rounded-xl border border-input bg-card shadow-sm 
+            focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50 
+            sm:text-sm h-12 text-foreground
+            ${prefix ? 'pl-8' : 'pl-4'}
+            ${suffix ? 'pr-12' : 'pr-4'}
+          `}
         />
-         {suffix && (
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-                <span className="text-gray-500 dark:text-gray-400 sm:text-sm">{suffix}</span>
-            </div>
+        {suffix && (
+          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-4">
+            <span className="text-muted-foreground sm:text-sm">{suffix}</span>
+          </div>
         )}
       </div>
     </div>

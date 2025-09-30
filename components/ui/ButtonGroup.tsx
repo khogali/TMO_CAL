@@ -4,7 +4,7 @@ interface ButtonGroupProps {
   label: string;
   name: string;
   value: string;
-  options: { value: string; label: string }[];
+  options: { value: string; label: string; disabled?: boolean }[];
   onChange: (name: string, value: string) => void;
   className?: string;
 }
@@ -12,7 +12,7 @@ interface ButtonGroupProps {
 const ButtonGroup: React.FC<ButtonGroupProps> = ({ label, name, value, options, onChange, className = 'grid-cols-3' }) => {
   return (
     <div>
-      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+      <label className="block text-sm font-medium text-muted-foreground mb-2">
         {label}
       </label>
       <div className={`grid ${className} gap-2`}>
@@ -21,14 +21,16 @@ const ButtonGroup: React.FC<ButtonGroupProps> = ({ label, name, value, options, 
             key={option.value}
             type="button"
             onClick={() => onChange(name, option.value)}
+            disabled={option.disabled}
             className={`
-              py-2 px-2 rounded-md text-sm font-semibold transition-colors duration-200 text-center
-              focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-tmobile-magenta dark:focus:ring-offset-slate-800
+              h-12 px-2 rounded-xl text-sm font-semibold transition-colors duration-200 text-center
+              focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary focus:ring-offset-card
               whitespace-nowrap
               ${value === option.value
-                ? 'bg-tmobile-magenta text-white shadow-md'
-                : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-300 dark:hover:bg-slate-600'
+                ? 'bg-primary text-white shadow-soft'
+                : 'bg-muted text-foreground hover:bg-border'
               }
+              ${option.disabled ? 'opacity-50 cursor-not-allowed hover:bg-muted' : ''}
             `}
           >
             {option.label}

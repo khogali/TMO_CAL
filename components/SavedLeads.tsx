@@ -1,6 +1,8 @@
+
 import React, { useState } from 'react';
-import { SavedLead, PlanPricingData, Device, DiscountSettings, CustomerType, InsurancePlan, TradeInType, AccessoryPaymentType } from '../types';
-import { Card, CardHeader, CardTitle, CardContent } from './ui/Card';
+import { SavedLead, PlanPricingData, DiscountSettings, CustomerType, InsurancePlan, TradeInType, AccessoryPaymentType } from '../types';
+import { Card, CardContent, CardTitle, CardHeader } from './ui/Card';
+import { calculateQuoteTotals } from '../utils/calculations';
 
 const formatCurrency = (amountInCents: number) => {
     return (amountInCents / 100).toLocaleString(navigator.language, {
@@ -19,86 +21,42 @@ const getCustomerTypeLabel = (type: CustomerType) => {
 };
 
 const DetailRow: React.FC<{ label: string; value: React.ReactNode; isSubtle?: boolean; valueClassName?: string }> = ({ label, value, isSubtle = false, valueClassName = '' }) => (
-  <div className={`flex justify-between items-start text-sm ${isSubtle ? 'pl-4' : ''}`}>
-    <p className="text-slate-500 dark:text-slate-400 flex-shrink-0 mr-2">{label}</p>
-    <p className={`font-medium text-slate-800 dark:text-slate-100 text-right ${valueClassName}`}>{value}</p>
+  <div className={`flex justify-between items-start py-2 ${isSubtle ? 'pl-4' : ''}`}>
+    <p className="text-sm text-muted-foreground flex-shrink-0 mr-2">{label}</p>
+    <p className={`font-medium text-sm text-foreground text-right ${valueClassName}`}>{value}</p>
   </div>
 );
-
 
 const LeadCard: React.FC<{ lead: SavedLead; planPricing: PlanPricingData; onLoad: (lead: SavedLead) => void; onDelete: (leadId: string) => void; discountSettings: DiscountSettings; insurancePlans: InsurancePlan[];}> = ({ lead, planPricing, onLoad, onDelete, discountSettings, insurancePlans }) => {
     const [copied, setCopied] = useState(false);
     const [isExpanded, setIsExpanded] = useState(false);
 
     const planDetails = planPricing[lead.plan];
-    if (!planDetails) return null; // Or render an error state
+    const totals = calculateQuoteTotals(lead, planPricing, discountSettings, insurancePlans);
 
-    // --- Recalculate totals for display using cents for precision ---
-    const toCents = (dollars: number) => Math.round(dollars * 100);
+    if (!planDetails || !totals) return null;
 
-    const basePlanPriceInCents = toCents(planDetails.price[lead.lines - 1] || 0);
-    const autopayDiscountInCents = lead.discounts.autopay ? toCents(lead.lines * discountSettings.autopay) : 0;
-    const insiderDiscountValue = basePlanPriceInCents * (discountSettings.insider / 100);
-    const insiderDiscountInCents = lead.discounts.insider ? Math.round(insiderDiscountValue) : 0;
-    let thirdLineFreeDiscountInCents = 0;
-    if (lead.discounts.thirdLineFree && lead.lines >= 3) {
-      const twoLinePrice = planDetails.price[1] || 0;
-      const threeLinePrice = planDetails.price[2] || 0;
-      thirdLineFreeDiscountInCents = toCents(threeLinePrice - twoLinePrice);
-    }
-    const totalDiscountsInCents = autopayDiscountInCents + insiderDiscountInCents + thirdLineFreeDiscountInCents;
-    const finalPlanPriceInCents = basePlanPriceInCents - totalDiscountsInCents;
-
-    const insuranceLines = lead.insuranceLines ?? (lead.insuranceTier && lead.insuranceTier !== 'none' ? lead.lines : 0);
-    const insuranceDetails = lead.insuranceTier === 'none'
-      ? { id: 'none', name: 'None', price: 0 }
-      : insurancePlans.find(p => p.id === lead.insuranceTier) || { id: 'not-found', name: 'N/A', price: 0 };
-    const insuranceCostInCents = toCents(insuranceDetails.price * insuranceLines);
-    
-    const totalDeviceCostInCents = (lead.devices || []).reduce((sum, dev) => sum + toCents(Number(dev.price) || 0), 0);
-    const lumpSumTradeInInCents = (lead.devices || [])
-        .filter(dev => (dev.tradeInType ?? TradeInType.LUMP_SUM) === TradeInType.LUMP_SUM)
-        .reduce((sum, dev) => sum + toCents(Number(dev.tradeIn) || 0), 0);
-    const monthlyCreditTradeInInCents = (lead.devices || [])
-        .filter(dev => dev.tradeInType === TradeInType.MONTHLY_CREDIT)
-        .reduce((sum, dev) => sum + toCents(Number(dev.tradeIn) || 0), 0);
-
-    const monthlyDevicePaymentInCents = totalDeviceCostInCents > 0 ? Math.round(totalDeviceCostInCents / 24) : 0;
-    const monthlyTradeInCreditInCents = monthlyCreditTradeInInCents > 0 ? Math.round(monthlyCreditTradeInInCents / 24) : 0;
-
-    const safeAccessories = (lead.accessories || []).map(acc => ({ ...acc, quantity: acc.quantity || 1 }));
-    const paidInFullAccessories = safeAccessories.filter(acc => acc.paymentType === AccessoryPaymentType.FULL);
-    const financedAccessories = safeAccessories.filter(acc => acc.paymentType === AccessoryPaymentType.FINANCED);
-
-    const paidInFullAccessoriesCostInCents = paidInFullAccessories
-      .reduce((sum, acc) => sum + toCents(acc.price * acc.quantity), 0);
-    const paidInFullAccessoriesTaxInCents = Math.round(paidInFullAccessoriesCostInCents * ((Number(lead.taxRate) || 0) / 100));
-    
-    const financedAccessoriesCostInCents = financedAccessories
-      .reduce((sum, acc) => sum + toCents(acc.price * acc.quantity), 0);
-    const financedAccessoriesTaxInCents = Math.round(financedAccessoriesCostInCents * ((Number(lead.taxRate) || 0) / 100));
-    const financedAccessoriesMonthlyCostInCents = financedAccessoriesCostInCents > 0 ? Math.round(financedAccessoriesCostInCents / 12) : 0;
-
-
-    let calculatedTaxesInCents = 0;
-    if (!planDetails.taxesIncluded) {
-        const monthlyPlanCostBeforeDiscounts = basePlanPriceInCents;
-        const monthlyInsuranceCost = insuranceCostInCents;
-        const taxableMonthlyAmountInCents = monthlyPlanCostBeforeDiscounts + monthlyInsuranceCost;
-        calculatedTaxesInCents = Math.round(taxableMonthlyAmountInCents * ((Number(lead.taxRate) || 0) / 100));
-    }
-    const totalMonthlyAddonsInCents = insuranceCostInCents + monthlyDevicePaymentInCents + financedAccessoriesMonthlyCostInCents - monthlyTradeInCreditInCents;
-    const monthlyTotalInCents = finalPlanPriceInCents + totalMonthlyAddonsInCents + calculatedTaxesInCents;
-
-    const dueTodayDeviceTaxInCents = Math.round(totalDeviceCostInCents * ((Number(lead.taxRate) || 0) / 100));
-    
-    const activationFeeInCents = lead.fees?.activation ? toCents(lead.lines * 10) : 0;
-    const upgradeFeeInCents = lead.fees?.upgrade ? toCents(lead.lines * 35) : 0;
-    const totalOneTimeFeesInCents = activationFeeInCents + upgradeFeeInCents;
-    const dueTodayFeesTaxInCents = Math.round(totalOneTimeFeesInCents * ((Number(lead.taxRate) || 0) / 100));
-
-    const dueTodayTotalInCents = dueTodayDeviceTaxInCents - lumpSumTradeInInCents + totalOneTimeFeesInCents + dueTodayFeesTaxInCents + paidInFullAccessoriesCostInCents + paidInFullAccessoriesTaxInCents + financedAccessoriesTaxInCents;
-
+    const {
+      totalMonthlyInCents,
+      dueTodayInCents,
+      basePlanPriceInCents,
+      autopayDiscountInCents,
+      insiderDiscountInCents,
+      thirdLineFreeDiscountInCents,
+      insuranceCostInCents,
+      monthlyDevicePaymentInCents,
+      financedAccessories,
+      monthlyTradeInCreditInCents,
+      calculatedTaxesInCents,
+      activationFeeInCents,
+      upgradeFeeInCents,
+      paidInFullAccessories,
+      dueTodayDeviceTaxInCents,
+      dueTodayFeesTaxInCents,
+      paidInFullAccessoriesTaxInCents,
+      financedAccessoriesTaxInCents,
+      lumpSumTradeInInCents
+    } = totals;
 
     const appliedDiscounts = Object.entries(lead.discounts).filter(([, val]) => val).map(([key]) => {
         if (key === 'autopay') return 'AutoPay';
@@ -107,13 +65,15 @@ const LeadCard: React.FC<{ lead: SavedLead; planPricing: PlanPricingData; onLoad
         return '';
     }).filter(Boolean);
 
+    const insuranceDetails = lead.insuranceTier === 'none'
+        ? { name: 'None' }
+        : insurancePlans.find(p => p.id === lead.insuranceTier) || { name: 'N/A' };
+    const insuranceLines = lead.insuranceLines ?? (lead.insuranceTier && lead.insuranceTier !== 'none' ? lead.lines : 0);
 
     const handleCopy = () => {
         const insuranceLabel = insuranceDetails.name;
         const insuranceText = insuranceLines > 0 ? `${insuranceLabel} (${insuranceLines} line${insuranceLines > 1 ? 's' : ''})` : 'None';
 
-        const formatCurrencyForCopy = (amountInCents: number) => (amountInCents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-        
         const copyText = `
     *** T-Mobile Quote Summary for ${lead.customerName} ***
     
@@ -136,17 +96,17 @@ const LeadCard: React.FC<{ lead: SavedLead; planPricing: PlanPricingData; onLoad
     }
     
     --- DEVICES (${(lead.devices || []).length}) ---
-    ${(lead.devices || []).length > 0 ? lead.devices.map((dev, i) => `Device ${i + 1}: ${formatCurrencyForCopy(toCents(dev.price))} (Trade-in: ${formatCurrencyForCopy(toCents(dev.tradeIn))} applied as ${dev.tradeInType === TradeInType.MONTHLY_CREDIT ? 'Monthly Credit' : 'Upfront Credit'})`).join('\n') : 'No devices'}
+    ${(lead.devices || []).length > 0 ? lead.devices.map((dev, i) => `Device ${i + 1}: ${formatCurrency(Math.round(dev.price * 100))} (Trade-in: ${formatCurrency(Math.round(dev.tradeIn * 100))} applied as ${dev.tradeInType === TradeInType.MONTHLY_CREDIT ? 'Monthly Credit' : 'Upfront Credit'})`).join('\n') : 'No devices'}
     
     --- ACCESSORIES (${(lead.accessories || []).length}) ---
-    ${(lead.accessories || []).length > 0 ? lead.accessories.map((acc, i) => `Accessory ${i + 1}: ${acc.name || 'Unnamed'} (x${acc.quantity || 1}) - ${formatCurrencyForCopy(toCents(acc.price))} (${acc.paymentType === AccessoryPaymentType.FINANCED ? 'Financed' : 'Paid in Full'})`).join('\n') : 'No accessories'}
+    ${(lead.accessories || []).length > 0 ? lead.accessories.map((acc, i) => `Accessory ${i + 1}: ${acc.name || 'Unnamed'} (x${acc.quantity || 1}) - ${formatCurrency(Math.round(acc.price * 100))} (${acc.paymentType === AccessoryPaymentType.FINANCED ? 'Financed' : 'Paid in Full'})`).join('\n') : 'No accessories'}
 
     --- DISCOUNTS ---
     ${appliedDiscounts.length > 0 ? appliedDiscounts.join(', ') : 'None'}
     
     --- PRICING ---
-    Total Monthly Estimate: ${formatCurrencyForCopy(monthlyTotalInCents)}
-    Amount Due Today: ${formatCurrencyForCopy(dueTodayTotalInCents)}
+    Total Monthly Estimate: ${formatCurrency(totalMonthlyInCents)}
+    Amount Due Today: ${formatCurrency(dueTodayInCents)}
     
     --- PREPARED BY ---
     Ahmed Khogali
@@ -159,47 +119,44 @@ const LeadCard: React.FC<{ lead: SavedLead; planPricing: PlanPricingData; onLoad
         });
     };
 
-    const insuranceLabel = insuranceDetails.name;
-    const insuranceText = insuranceLines > 0 ? `${insuranceLabel} (${insuranceLines} line${insuranceLines > 1 ? 's' : ''})` : 'None';
-
     return (
         <Card>
-            <div className="flex justify-between items-start p-4">
+            <CardHeader className="flex justify-between items-start">
                  <div className="flex-grow">
                     <CardTitle className="mb-1">{lead.customerName || "Unnamed Lead"}</CardTitle>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">{lead.customerPhone || "No phone number"} &middot; {new Date(lead.createdAt).toLocaleDateString()}</p>
+                    <p className="text-sm text-muted-foreground">{lead.customerPhone || "No phone number"} &middot; {new Date(lead.createdAt).toLocaleDateString()}</p>
                 </div>
-                <div className="flex items-center space-x-1 flex-shrink-0 bg-slate-100 dark:bg-slate-700/50 p-1 rounded-lg ml-2">
-                     <button onClick={() => onLoad(lead)} className="p-1.5 rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:text-slate-100 transition-colors" title="Load Lead"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 20h5v-5M20 4h-5v5" /></svg></button>
-                     <button onClick={handleCopy} className="p-1.5 rounded-md text-slate-500 hover:bg-slate-200 hover:text-slate-800 dark:text-slate-400 dark:hover:bg-slate-600 dark:hover:text-slate-100 transition-colors" title="Copy Info">
+                <div className="flex items-center space-x-1 flex-shrink-0 bg-muted p-1 rounded-lg ml-2">
+                     <button onClick={() => onLoad(lead)} className="p-2 rounded-md text-muted-foreground hover:bg-border hover:text-foreground transition-colors" title="Load Lead"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h5M20 20v-5h-5M4 20h5v-5M20 4h-5v5" /></svg></button>
+                     <button onClick={handleCopy} className="p-2 rounded-md text-muted-foreground hover:bg-border hover:text-foreground transition-colors" title="Copy Info">
                         {copied ? (
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                         ) : (
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" /></svg>
                         )}
                      </button>
-                     <button onClick={() => onDelete(lead.id)} className="p-1.5 rounded-md text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50 transition-colors" title="Delete Lead"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
+                     <button onClick={() => onDelete(lead.id)} className="p-2 rounded-md text-red-500/80 hover:bg-red-500/10 hover:text-red-500 transition-colors" title="Delete Lead"><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                 </div>
-            </div>
+            </CardHeader>
             <CardContent className="pt-0">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg p-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-muted rounded-xl p-4">
                      <div className="text-center">
-                        <p className="text-sm text-slate-500 dark:text-slate-400">Est. Monthly Total</p>
-                        <p className="text-2xl font-bold text-tmobile-magenta">{formatCurrency(monthlyTotalInCents)}</p>
+                        <p className="text-sm text-muted-foreground">Est. Monthly Total</p>
+                        <p className="text-2xl font-bold text-primary">{formatCurrency(totalMonthlyInCents)}</p>
                     </div>
                      <div className="text-center">
-                        <p className="text-sm text-slate-500 dark:text-slate-400">Est. Due Today</p>
-                        <p className="text-2xl font-bold text-slate-800 dark:text-slate-100">{formatCurrency(dueTodayTotalInCents)}</p>
+                        <p className="text-sm text-muted-foreground">Est. Due Today</p>
+                        <p className="text-2xl font-bold text-foreground">{formatCurrency(dueTodayInCents)}</p>
                     </div>
                 </div>
 
-                <div className={`grid transition-all duration-300 ease-in-out ${isExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}>
+                <div className={`grid transition-all duration-500 ease-in-out ${isExpanded ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
                     <div className="overflow-hidden">
-                        <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-700 space-y-4">
+                        <div className="mt-4 pt-4 border-t border-border space-y-4">
                             {/* Monthly Breakdown */}
                             <div>
-                                <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-2">Monthly Breakdown</h4>
-                                <div className="space-y-1.5 pl-2 border-l-2 border-slate-200 dark:border-slate-700">
+                                <h4 className="font-semibold text-foreground mb-2">Monthly Breakdown</h4>
+                                <div className="divide-y divide-border rounded-lg border border-border p-2">
                                     <DetailRow label={`${planDetails.name} (${lead.lines} Line${lead.lines > 1 ? 's' : ''})`} value={formatCurrency(basePlanPriceInCents)} />
                                     {autopayDiscountInCents > 0 && <DetailRow label="AutoPay Discount" value={`-${formatCurrency(autopayDiscountInCents)}`} valueClassName="text-green-600 dark:text-green-400" />}
                                     {insiderDiscountInCents > 0 && <DetailRow label="Insider Discount" value={`-${formatCurrency(insiderDiscountInCents)}`} valueClassName="text-green-600 dark:text-green-400" />}
@@ -208,7 +165,7 @@ const LeadCard: React.FC<{ lead: SavedLead; planPricing: PlanPricingData; onLoad
                                     {insuranceCostInCents > 0 && <DetailRow label={`Insurance (${insuranceDetails.name})`} value={formatCurrency(insuranceCostInCents)} />}
                                     {monthlyDevicePaymentInCents > 0 && <DetailRow label="Device Financing" value={formatCurrency(monthlyDevicePaymentInCents)} />}
                                     {financedAccessories.map(acc => {
-                                        const monthlyPaymentInCents = Math.round(toCents(acc.price * (acc.quantity || 1)) / 12);
+                                        const monthlyPaymentInCents = Math.round(Math.round(acc.price * 100 * (acc.quantity || 1)) / 12);
                                         return <DetailRow key={acc.id} label={`Financed: ${acc.name} (x${acc.quantity})`} value={formatCurrency(monthlyPaymentInCents)} isSubtle />
                                     })}
                                     {monthlyTradeInCreditInCents > 0 && <DetailRow label="Monthly Trade-in Credit" value={`-${formatCurrency(monthlyTradeInCreditInCents)}`} valueClassName="text-green-600 dark:text-green-400" />}
@@ -218,14 +175,14 @@ const LeadCard: React.FC<{ lead: SavedLead; planPricing: PlanPricingData; onLoad
                             </div>
 
                              {/* Due Today Breakdown */}
-                            {dueTodayTotalInCents > 0 && (
+                            {dueTodayInCents > 0 && (
                             <div>
-                                <h4 className="font-semibold text-slate-800 dark:text-slate-100 mb-2">Due Today Breakdown</h4>
-                                <div className="space-y-1.5 pl-2 border-l-2 border-slate-200 dark:border-slate-700">
+                                <h4 className="font-semibold text-foreground mb-2">Due Today Breakdown</h4>
+                                <div className="divide-y divide-border rounded-lg border border-border p-2">
                                     {activationFeeInCents > 0 && <DetailRow label="Activation Fee" value={formatCurrency(activationFeeInCents)} />}
                                     {upgradeFeeInCents > 0 && <DetailRow label="Upgrade Fee" value={formatCurrency(upgradeFeeInCents)} />}
                                     {paidInFullAccessories.map(acc => (
-                                        <DetailRow key={acc.id} label={`Paid in Full: ${acc.name} (x${acc.quantity})`} value={formatCurrency(toCents(acc.price * acc.quantity))} />
+                                        <DetailRow key={acc.id} label={`Paid in Full: ${acc.name} (x${acc.quantity})`} value={formatCurrency(Math.round(acc.price * 100 * acc.quantity))} />
                                     ))}
                                     {dueTodayDeviceTaxInCents > 0 && <DetailRow label="Device Tax" value={formatCurrency(dueTodayDeviceTaxInCents)} />}
                                     {dueTodayFeesTaxInCents > 0 && <DetailRow label="Fee Tax" value={formatCurrency(dueTodayFeesTaxInCents)} />}
@@ -241,11 +198,11 @@ const LeadCard: React.FC<{ lead: SavedLead; planPricing: PlanPricingData; onLoad
                  <div className="text-center pt-4">
                     <button 
                         onClick={() => setIsExpanded(prev => !prev)}
-                        className="flex items-center justify-center w-full sm:w-auto mx-auto space-x-2 text-sm font-semibold text-tmobile-magenta hover:text-pink-700 dark:hover:text-pink-500 transition-colors"
+                        className="flex items-center justify-center w-full sm:w-auto mx-auto space-x-2 text-sm font-semibold text-primary hover:text-pink-700 dark:hover:text-pink-500 transition-colors"
                         aria-expanded={isExpanded}
                     >
                         <span>{isExpanded ? 'Hide Details' : 'Show Details'}</span>
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className={`w-4 h-4 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={3} stroke="currentColor" className={`w-3 h-3 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
                         </svg>
                     </button>
@@ -268,12 +225,12 @@ const SavedLeads: React.FC<SavedLeadsProps> = ({ leads, onLoad, onDelete, planPr
   return (
     <>
       {leads.length === 0 ? (
-        <div className="text-center py-16">
-          <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+        <div className="text-center py-16 bg-card rounded-2xl border border-border">
+          <svg xmlns="http://www.w3.org/2000/svg" className="mx-auto h-12 w-12 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
           </svg>
-          <h3 className="mt-2 text-sm font-medium text-slate-900 dark:text-white">No saved leads</h3>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Save a quote to see it here.</p>
+          <h3 className="mt-2 text-sm font-medium text-foreground">No saved leads</h3>
+          <p className="mt-1 text-sm text-muted-foreground">Save a quote to see it here.</p>
         </div>
       ) : (
         <div className="space-y-4">

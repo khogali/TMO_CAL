@@ -15,28 +15,28 @@ const DiscountOption: React.FC<DiscountOptionProps> = ({ icon, label, descriptio
     <label
       htmlFor={anId}
       className={`
-        flex items-center p-4 rounded-lg border-2 cursor-pointer transition-all duration-200
+        flex items-center p-4 rounded-xl border-2 cursor-pointer transition-all duration-200
         ${checked
-          ? 'bg-tmobile-magenta/10 border-tmobile-magenta dark:bg-tmobile-magenta/20'
-          : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500'
+          ? 'bg-primary/10 border-primary'
+          : 'bg-muted border-transparent hover:border-border'
         }
       `}
     >
-      <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700 mr-4">
-        <span className={`w-6 h-6 ${checked ? 'text-tmobile-magenta' : 'text-slate-500 dark:text-slate-400'}`}>
+      <div className={`flex-shrink-0 w-11 h-11 flex items-center justify-center rounded-lg mr-4 ${checked ? 'bg-primary/20' : 'bg-card'}`}>
+        <span className={`w-6 h-6 ${checked ? 'text-primary' : 'text-muted-foreground'}`}>
           {icon}
         </span>
       </div>
       <div className="flex-grow">
         <div className="flex items-center gap-2 mb-0.5">
-          <p className="font-semibold text-slate-800 dark:text-slate-100">{label}</p>
+          <p className="font-semibold text-foreground">{label}</p>
           {checked && (
             <span className="text-xs font-semibold bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300 py-0.5 px-2 rounded-full animate-fade-in-down">
                 Active
             </span>
           )}
         </div>
-        <p className="text-sm text-slate-500 dark:text-slate-400">{description}</p>
+        <p className="text-sm text-muted-foreground">{description}</p>
       </div>
       <div className="ml-4 flex-shrink-0">
         <div className="relative inline-flex items-center cursor-pointer">
@@ -48,7 +48,8 @@ const DiscountOption: React.FC<DiscountOptionProps> = ({ icon, label, descriptio
             checked={checked}
             onChange={onChange}
           />
-          <div className="w-11 h-6 bg-slate-200 dark:bg-slate-600 rounded-full peer peer-focus:ring-2 peer-focus:ring-tmobile-magenta dark:peer-focus:ring-offset-slate-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-tmobile-magenta"></div>
+           <div className={`w-12 h-7 rounded-full transition-colors peer-focus:ring-2 peer-focus:ring-primary peer-focus:ring-offset-2 peer-focus:ring-offset-card ${checked ? 'bg-primary' : 'bg-border'}`}></div>
+          <div className={`absolute top-1 left-1 bg-white w-5 h-5 rounded-full transition-transform transform ${checked ? 'translate-x-5' : 'translate-x-0'}`}></div>
         </div>
       </div>
     </label>

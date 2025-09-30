@@ -1,0 +1,16 @@
+{
+  "short_name": "T-Mo Quote",
+  "name": "T-Mobile Quote Generator",
+  "description": "A web app that generates clean, shareable quotes for T-Mobile plans.",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#e20074",
+  "background_color": "#ffffff"
+}
