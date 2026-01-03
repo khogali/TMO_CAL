@@ -29,7 +29,7 @@ const PageTransition: React.FC<PageTransitionProps> = ({ children, view }) => {
         animate="animate"
         exit="exit"
         transition={transition}
-        className="w-full"
+        className="w-full h-full flex flex-col"
       >
         {children}
       </motion.div>

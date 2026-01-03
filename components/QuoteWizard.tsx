@@ -211,7 +211,7 @@ const SegmentCard: React.FC<{
     );
 };
 
-// --- New Device Card Design (List Style) ---
+// --- List Style Device Card Design ---
 const VisualDeviceCard: React.FC<{
     device: DeviceModel;
     isSelected: boolean;
@@ -224,35 +224,40 @@ const VisualDeviceCard: React.FC<{
         <button 
             onClick={onClick}
             className={`
-                relative w-full text-left rounded-2xl p-3 sm:p-4 transition-all duration-200 border-2
-                flex items-center gap-4 group
+                relative w-full flex items-center gap-4
+                rounded-xl p-3 sm:p-4 transition-all duration-200 border-2 text-left group
                 ${isSelected 
-                    ? 'border-primary bg-background shadow-lg ring-1 ring-primary/20 z-10' 
-                    : 'border-transparent bg-card/60 hover:bg-card hover:border-border hover:shadow-md'
+                    ? 'border-primary bg-background shadow-md ring-1 ring-primary/20 z-10' 
+                    : 'border-transparent bg-white dark:bg-slate-800/50 hover:bg-white dark:hover:bg-slate-800 hover:border-border hover:shadow-sm'
                 }
             `}
         >
-            {/* Icon */}
+            {/* Selection Indicator */}
+            {isSelected && (
+                <div className="absolute left-0 top-1/2 -translate-y-1/2 h-8 w-1 bg-primary rounded-r-full" />
+            )}
+
+            {/* Icon / Image Placeholder */}
             <div className={`
-                w-12 h-12 shrink-0 rounded-xl flex items-center justify-center text-2xl shadow-sm transition-transform duration-300
-                ${isSelected ? 'bg-gradient-to-br from-primary to-pink-600 text-white scale-110' : 'bg-muted text-muted-foreground group-hover:scale-105'}
+                w-12 h-12 sm:w-14 sm:h-14 shrink-0 rounded-xl flex items-center justify-center text-2xl sm:text-3xl shadow-sm transition-transform duration-300
+                ${isSelected ? 'bg-gradient-to-br from-primary to-pink-600 text-white scale-105' : 'bg-muted text-muted-foreground group-hover:scale-105'}
             `}>
                 {device.manufacturer === 'Apple' ? '' : device.manufacturer[0]}
             </div>
             
             {/* Content */}
             <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 mb-0.5">
                     <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">{device.manufacturer}</span>
-                    {device.tags.includes('new_release') && <span className="bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 text-[9px] font-bold px-1.5 py-0.5 rounded-full">NEW</span>}
+                    {device.tags.includes('new_release') && <span className="bg-blue-500 text-white text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm">NEW</span>}
                 </div>
                 <div className="text-sm sm:text-base font-bold text-foreground leading-tight truncate">{device.name}</div>
             </div>
 
             {/* Price */}
             <div className="text-right shrink-0">
-                 <div className={`text-sm font-bold ${isSelected ? 'text-primary' : 'text-foreground'}`}>
-                    ${monthly}/mo
+                 <div className={`text-base sm:text-lg font-black tracking-tight ${isSelected ? 'text-primary' : 'text-foreground'}`}>
+                    ${monthly}<span className="text-xs font-medium text-muted-foreground">/mo</span>
                 </div>
                 <div className="text-[10px] text-muted-foreground">
                     ${price} retail
@@ -413,6 +418,8 @@ const QuoteWizard: React.FC = () => {
     const [deviceSelectionMode, setDeviceSelectionMode] = useState<'unified' | 'mixed'>('unified');
     const [individualSelections, setIndividualSelections] = useState<string[]>([]);
     const [activeSlotIndex, setActiveSlotIndex] = useState(0);
+    const [manufacturerFilter, setManufacturerFilter] = useState('All');
+    const [searchQuery, setSearchQuery] = useState('');
 
     // BTS State
     const [btsCounts, setBtsCounts] = useState<Record<string, number>>({});
@@ -604,6 +611,20 @@ const QuoteWizard: React.FC = () => {
             .filter(d => d.category === DeviceCategory.PHONE)
             .sort((a, b) => b.variants[0].price - a.variants[0].price);
     }, [deviceDatabase]);
+
+    const filteredPhones = useMemo(() => {
+        return phoneOptions.filter(d => {
+            const matchesMfg = manufacturerFilter === 'All' || d.manufacturer === manufacturerFilter;
+            const matchesSearch = d.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                                  d.manufacturer.toLowerCase().includes(searchQuery.toLowerCase());
+            return matchesMfg && matchesSearch;
+        });
+    }, [phoneOptions, manufacturerFilter, searchQuery]);
+
+    const manufacturers = useMemo(() => {
+        const m = new Set(phoneOptions.map(d => d.manufacturer));
+        return ['All', ...Array.from(m).sort()];
+    }, [phoneOptions]);
 
     const btsOptions = useMemo(() => {
         return deviceDatabase.devices
@@ -828,78 +849,51 @@ const QuoteWizard: React.FC = () => {
             {step === 2 && (
                 <div className="flex-1 flex flex-col h-full overflow-hidden animate-fade-in-down bg-muted/20">
                     
-                    {/* 1. TOP BAR: Global Config & Mode Switcher */}
-                    <div className="px-6 py-4 bg-background border-b border-border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 z-10 shrink-0">
-                        {/* Allocation Pill */}
-                        <div className="flex items-center bg-muted rounded-full p-1 self-start md:self-auto">
-                            <div className="px-3 py-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                                Allocation:
+                    {/* TOP BAR: Sticky Header for Allocation, Trade-In and Filters */}
+                    <div className="sticky top-0 z-20 -mx-px">
+                        {/* 1. Allocation & Mode Switcher */}
+                        <div className="px-6 py-3 bg-background border-b border-border shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 z-10 shrink-0">
+                            {/* Allocation Pill */}
+                            <div className="flex items-center bg-muted rounded-full p-1 self-start md:self-auto">
+                                <div className="px-3 py-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
+                                    Allocation:
+                                </div>
+                                <div className="flex items-center gap-2 pr-2">
+                                    <span className={`text-xs font-bold transition-colors ${newPhoneCount > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>{newPhoneCount} New</span>
+                                    <input 
+                                        type="range" 
+                                        min="0" 
+                                        max={lines} 
+                                        value={newPhoneCount}
+                                        onChange={(e) => setNewPhoneCount(Number(e.target.value))}
+                                        className="w-24 h-1.5 bg-border rounded-full appearance-none cursor-pointer accent-primary"
+                                    />
+                                    <span className={`text-xs font-bold transition-colors ${lines - newPhoneCount > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>{lines - newPhoneCount} BYOD</span>
+                                </div>
                             </div>
-                            <div className="flex items-center gap-2 pr-2">
-                                <span className={`text-xs font-bold transition-colors ${newPhoneCount > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>{newPhoneCount} New</span>
-                                <input 
-                                    type="range" 
-                                    min="0" 
-                                    max={lines} 
-                                    value={newPhoneCount}
-                                    onChange={(e) => setNewPhoneCount(Number(e.target.value))}
-                                    className="w-24 h-1.5 bg-border rounded-full appearance-none cursor-pointer accent-primary"
-                                />
-                                <span className={`text-xs font-bold transition-colors ${lines - newPhoneCount > 0 ? 'text-foreground' : 'text-muted-foreground'}`}>{lines - newPhoneCount} BYOD</span>
-                            </div>
+
+                            {/* Mode Switcher */}
+                            {Number(newPhoneCount) > 1 && (
+                                <div className="flex bg-muted/50 p-1 rounded-xl">
+                                    <button 
+                                        onClick={() => setDeviceSelectionMode('unified')}
+                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${deviceSelectionMode === 'unified' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                                    >
+                                        Unified
+                                    </button>
+                                    <button 
+                                        onClick={() => setDeviceSelectionMode('mixed')}
+                                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${deviceSelectionMode === 'mixed' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+                                    >
+                                        Mix & Match
+                                    </button>
+                                </div>
+                            )}
                         </div>
 
-                        {/* Mode Switcher */}
-                        {Number(newPhoneCount) > 1 && (
-                            <div className="flex bg-muted/50 p-1 rounded-xl">
-                                <button 
-                                    onClick={() => setDeviceSelectionMode('unified')}
-                                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${deviceSelectionMode === 'unified' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                                >
-                                    Unified
-                                </button>
-                                <button 
-                                    onClick={() => setDeviceSelectionMode('mixed')}
-                                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${deviceSelectionMode === 'mixed' ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                                >
-                                    Mix & Match
-                                </button>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* 2. THE DECK: Visual Line Representation */}
-                    <div className="bg-muted/30 border-b border-border py-6 px-6 overflow-x-auto shrink-0 min-h-[140px] flex items-center">
-                        <div className="mx-auto max-w-5xl w-full">
-                            {Number(newPhoneCount) === 0 ? (
-                                <div className="text-center text-muted-foreground">
-                                    <p className="text-sm">All lines are BYOD (Bring Your Own Device).</p>
-                                    <p className="text-xs mt-1">Proceed to next step or adjust allocation above.</p>
-                                </div>
-                            ) : deviceSelectionMode === 'unified' ? (
-                                // UNIFIED STACK
-                                <div className="flex justify-center">
-                                    <div className="relative w-64 h-24 bg-card rounded-2xl border-2 border-primary shadow-lg flex items-center p-4 gap-4 transition-all">
-                                        {/* Multiplier Badge */}
-                                        <div className="absolute -top-3 -right-3 bg-primary text-white w-8 h-8 rounded-full flex items-center justify-center font-bold shadow-md z-20 border-2 border-white dark:border-slate-900">
-                                            x{newPhoneCount}
-                                        </div>
-                                        
-                                        {/* Stack Effect */}
-                                        <div className="absolute inset-0 bg-card rounded-2xl border border-border shadow-sm translate-x-2 translate-y-2 -z-10"></div>
-                                        <div className="absolute inset-0 bg-card rounded-2xl border border-border shadow-sm translate-x-4 translate-y-4 -z-20"></div>
-
-                                        <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-2xl text-primary">
-                                            {deviceDatabase.devices.find(d => d.id === selectedModelId)?.manufacturer === 'Apple' ? '' : deviceDatabase.devices.find(d => d.id === selectedModelId)?.manufacturer[0] || '📱'}
-                                        </div>
-                                        <div>
-                                            <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">All New Lines</p>
-                                            <p className="text-sm font-bold text-foreground truncate w-32">{deviceDatabase.devices.find(d => d.id === selectedModelId)?.name || 'Select Device'}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                // MIXED CAROUSEL
+                        {/* 2. THE DECK: Visual Line Representation (Only if mixed mode or unified visual check) */}
+                        {Number(newPhoneCount) > 0 && deviceSelectionMode === 'mixed' && (
+                            <div className="bg-muted/30 border-b border-border py-4 px-6 overflow-x-auto shrink-0 flex items-center">
                                 <div className="flex gap-4 px-4 pb-2">
                                     {individualSelections.map((modelId, index) => {
                                         const model = deviceDatabase.devices.find(d => d.id === modelId);
@@ -909,106 +903,113 @@ const QuoteWizard: React.FC = () => {
                                                 key={index}
                                                 onClick={() => setActiveSlotIndex(index)}
                                                 className={`
-                                                    relative shrink-0 w-48 h-20 rounded-xl border-2 transition-all duration-300 flex items-center p-3 gap-3 text-left
+                                                    relative shrink-0 w-48 h-16 rounded-xl border-2 transition-all duration-300 flex items-center p-2 gap-3 text-left
                                                     ${isActive 
-                                                        ? 'border-primary bg-background shadow-lg scale-105 z-10' 
+                                                        ? 'border-primary bg-background shadow-md scale-105 z-10' 
                                                         : 'border-border bg-card/60 hover:bg-card hover:border-primary/30'
                                                     }
                                                 `}
                                             >
                                                 {isActive && <div className="absolute -top-2 left-1/2 -translate-x-1/2 bg-primary text-white text-[9px] font-bold px-2 py-0.5 rounded-full shadow-sm">EDITING</div>}
-                                                
-                                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg shadow-inner ${isActive ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
-                                                    {model ? (model.manufacturer === 'Apple' ? '' : model.manufacturer[0]) : '?'}
+                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm shadow-inner ${isActive ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                                                    {index + 1}
                                                 </div>
                                                 <div className="min-w-0">
-                                                    <p className={`text-[10px] font-bold uppercase tracking-wider ${isActive ? 'text-primary' : 'text-muted-foreground'}`}>Line {index + 1}</p>
                                                     <p className="text-xs font-bold text-foreground truncate">{model ? model.name : 'Select Device'}</p>
                                                 </div>
                                             </button>
                                         );
                                     })}
                                 </div>
-                            )}
-                        </div>
+                            </div>
+                        )}
+
+                        {/* 3. SETTINGS & FILTERS: Unified Sticky Bar */}
+                        {Number(newPhoneCount) > 0 && (
+                            <div className="bg-gradient-to-b from-muted/30 to-background/50 backdrop-blur-md border-b border-border shadow-sm px-4 py-3 flex flex-col gap-3">
+                                {/* Trade-In Row */}
+                                <div className="flex items-center gap-3 overflow-x-auto scrollbar-hide pb-1">
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-card border border-border rounded-lg shadow-sm shrink-0">
+                                        <div className="w-5 h-5 rounded bg-green-500/10 text-green-600 flex items-center justify-center">
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" /></svg>
+                                        </div>
+                                        <span className="text-xs font-bold text-muted-foreground whitespace-nowrap">Trade-In:</span>
+                                        <select 
+                                            className="bg-transparent text-xs font-bold text-foreground outline-none cursor-pointer"
+                                            value={currentTradeInState.type}
+                                            onChange={(e) => handleTradeInChange('type', e.target.value as any)}
+                                        >
+                                            <option value="none">None</option>
+                                            <option value="manual">Manual Credit</option>
+                                            <option value="promo">Promotion</option>
+                                        </select>
+                                    </div>
+
+                                    {currentTradeInState.type === 'manual' && (
+                                        <div className="flex items-center bg-card border border-border rounded-lg px-2 shadow-sm h-8 animate-fade-in-down shrink-0">
+                                            <span className="text-xs font-bold text-muted-foreground mr-1">$</span>
+                                            <input 
+                                                type="number" 
+                                                className="w-16 bg-transparent text-xs font-bold outline-none"
+                                                placeholder="0"
+                                                value={currentTradeInState.value || ''}
+                                                onChange={(e) => handleTradeInChange('value', Number(e.target.value))}
+                                            />
+                                        </div>
+                                    )}
+
+                                    {currentTradeInState.type === 'promo' && (
+                                        <select 
+                                            className="h-8 max-w-[150px] bg-card border border-border rounded-lg text-xs font-medium px-2 outline-none shadow-sm animate-fade-in-down shrink-0"
+                                            value={currentTradeInState.promoId || ''}
+                                            onChange={(e) => handleTradeInChange('promoId', e.target.value)}
+                                        >
+                                            <option value="" disabled>Select Offer...</option>
+                                            {availableDevicePromos.map(p => (
+                                                <option key={p.id} value={p.id}>{p.name}</option>
+                                            ))}
+                                        </select>
+                                    )}
+                                </div>
+
+                                {/* Filters Row */}
+                                <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+                                    <div className="relative shrink-0">
+                                        <input 
+                                            type="text" 
+                                            placeholder="Search..." 
+                                            value={searchQuery}
+                                            onChange={(e) => setSearchQuery(e.target.value)}
+                                            className="pl-7 pr-3 py-1.5 rounded-full bg-muted text-xs font-medium w-28 focus:w-40 transition-all outline-none focus:ring-1 focus:ring-primary"
+                                        />
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-muted-foreground absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                                    </div>
+                                    <div className="h-6 w-px bg-border mx-1 shrink-0"></div>
+                                    {manufacturers.map(mfg => (
+                                        <button
+                                            key={mfg}
+                                            onClick={() => setManufacturerFilter(mfg)}
+                                            className={`px-3 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all border ${manufacturerFilter === mfg ? 'bg-foreground text-background border-foreground shadow-sm' : 'bg-card text-muted-foreground border-border hover:border-foreground/50'}`}
+                                        >
+                                            {mfg}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
 
-                    {/* 3. CATALOG & TRADE-IN */}
+                    {/* 4. DEVICE CATALOG LIST */}
                     <div className="flex-1 overflow-y-auto pb-32 px-4 sm:px-6">
                         <div className="max-w-5xl mx-auto py-6">
-                            
-                            {/* Updated Trade-In Control Bar */}
-                            {Number(newPhoneCount) > 0 && (
-                                <div className="sticky top-0 z-20 mb-6 -mx-2 px-2 pb-2 bg-gradient-to-b from-muted/20 to-transparent">
-                                    <div className="bg-card/90 backdrop-blur-md border border-border shadow-sm rounded-xl p-3 flex flex-col md:flex-row md:items-center gap-4">
-                                        
-                                        {/* Label Area */}
-                                        <div className="flex items-center gap-3 min-w-[140px]">
-                                            <div className="w-8 h-8 rounded-lg bg-green-500/10 text-green-600 flex items-center justify-center">
-                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" /></svg>
-                                            </div>
-                                            <div>
-                                                <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider block">Trade-In For</span>
-                                                <span className="text-sm font-bold text-foreground block">
-                                                    {deviceSelectionMode === 'unified' ? 'All New Lines' : `Line ${activeSlotIndex + 1}`}
-                                                </span>
-                                            </div>
-                                        </div>
-
-                                        {/* Mode Selector */}
-                                        <div className="flex p-1 bg-muted rounded-lg shrink-0">
-                                            {['none', 'manual', 'promo'].map((type) => (
-                                                <button
-                                                    key={type}
-                                                    onClick={() => handleTradeInChange('type', type as any)}
-                                                    className={`px-3 py-1.5 text-xs font-bold rounded-md capitalize transition-all ${currentTradeInState.type === type ? 'bg-white shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-                                                >
-                                                    {type === 'none' ? 'No Trade' : type === 'manual' ? 'Manual Credit' : 'Promotion'}
-                                                </button>
-                                            ))}
-                                        </div>
-
-                                        {/* Contextual Input */}
-                                        <div className="flex-1 flex items-center justify-end">
-                                            {currentTradeInState.type === 'manual' && (
-                                                <div className="relative w-full md:w-32 animate-fade-in-down">
-                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-bold">$</span>
-                                                    <input 
-                                                        type="number" 
-                                                        className="w-full h-9 pl-6 pr-3 rounded-lg border border-border bg-background text-sm font-bold focus:ring-2 focus:ring-green-500/20 focus:border-green-500 outline-none"
-                                                        placeholder="Value"
-                                                        value={currentTradeInState.value || ''}
-                                                        onChange={(e) => handleTradeInChange('value', Number(e.target.value))}
-                                                    />
-                                                </div>
-                                            )}
-
-                                            {currentTradeInState.type === 'promo' && (
-                                                <div className="relative w-full animate-fade-in-down">
-                                                    <select 
-                                                        className="w-full h-9 pl-3 pr-8 rounded-lg border border-border bg-background text-sm font-medium focus:ring-2 focus:ring-green-500/20 focus:border-green-500 outline-none appearance-none truncate"
-                                                        value={currentTradeInState.promoId || ''}
-                                                        onChange={(e) => handleTradeInChange('promoId', e.target.value)}
-                                                    >
-                                                        <option value="" disabled>Select Offer...</option>
-                                                        {availableDevicePromos.map(p => (
-                                                            <option key={p.id} value={p.id}>{p.name}</option>
-                                                        ))}
-                                                    </select>
-                                                    <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-muted-foreground">
-                                                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
+                            {Number(newPhoneCount) === 0 ? (
+                                <div className="text-center text-muted-foreground py-12">
+                                    <p className="text-sm">All lines are BYOD (Bring Your Own Device).</p>
+                                    <p className="text-xs mt-1">Proceed to next step or adjust allocation above.</p>
                                 </div>
-                            )}
-
-                            {/* Device Grid -> Device List Style */}
-                            {Number(newPhoneCount) > 0 && (
-                                <div className="flex flex-col gap-3">
-                                    {phoneOptions.map(device => {
+                            ) : (
+                                <div className="flex flex-col gap-3 pb-20">
+                                    {filteredPhones.map(device => {
                                         const currentSelectedId = deviceSelectionMode === 'unified' ? selectedModelId : individualSelections[activeSlotIndex];
                                         return (
                                             <VisualDeviceCard
@@ -1028,6 +1029,11 @@ const QuoteWizard: React.FC = () => {
                                             />
                                         );
                                     })}
+                                    {filteredPhones.length === 0 && (
+                                        <div className="text-center py-12 text-muted-foreground">
+                                            No devices found matching your filters.
+                                        </div>
+                                    )}
                                 </div>
                             )}
                         </div>

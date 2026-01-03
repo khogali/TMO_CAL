@@ -199,11 +199,11 @@ const App: React.FC = () => {
                 {view !== 'wizard' && <TopHeader />}
                 
                 {/* 
-                    FIX: Condition added to padding. 
-                    If we are in the 'wizard', we do NOT want the global padding-bottom for the BottomNavBar, 
-                    because the wizard has its own sticky/fixed action bar that handles safe areas.
+                    FIX: When view is 'wizard', use overflow-hidden on main to disable global scrolling.
+                    The Wizard component manages its own internal scrolling (App-like behavior).
+                    This prevents double scrollbars and jumpy behavior.
                 */}
-                <main className={`flex-1 overflow-y-auto scroll-smooth w-full relative ${view === 'wizard' ? 'pb-0' : 'pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-0'}`}>
+                <main className={`flex-1 w-full relative ${view === 'wizard' ? 'overflow-hidden pb-0' : 'overflow-y-auto scroll-smooth pb-[calc(6rem+env(safe-area-inset-bottom))] lg:pb-0'}`}>
                     <PageTransition view={view}>
                         {view === 'home' && <HomePage />}
                         {view === 'new-quote' && <LeadCalculator />}
