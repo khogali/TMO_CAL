@@ -1,5 +1,7 @@
 {
-  "name": "T-Mobile Quote Generator",
-  "description": "A web app that generates clean, shareable quotes for T-Mobile plans. The tool calculates plan costs, applies discounts, adds taxes, and displays everything in a professional, formatted snapshot.",
-  "requestFramePermissions": []
+  "name": "T-Mobile Sales Center",
+  "description": "An intelligent command center for T-Mobile sales reps. It helps manage leads, generate quotes with AI assistance, and provides sales coaching to improve performance.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
 }

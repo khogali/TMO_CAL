@@ -1,24 +1,46 @@
+
+<script type="importmap">
+{
+  "imports": {
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.28.0",
+    "firebase/": "https://aistudiocdn.com/firebase@^12.5.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react-dom": "https://aistudiocdn.com/react-dom@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "@testing-library/react": "https://aistudiocdn.com/@testing-library/react@^16.3.0",
+    "dexie": "https://aistudiocdn.com/dexie@^4.2.1",
+    "vitest": "https://aistudiocdn.com/vitest@^4.0.6",
+    "jsforce": "https://esm.sh/jsforce@^3.10.10",
+    "zod": "https://esm.sh/zod@3.22.4",
+    "framer-motion": "https://esm.sh/framer-motion@10.16.4?external=react,react-dom",
+    "firebase-functions": "https://esm.sh/firebase-functions@^7.0.2",
+    "firebase-admin": "https://esm.sh/firebase-admin@^13.6.0"
+  }
+}
+</script>
 <!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>T-Mobile Quote Generator</title>
+    <!-- Viewport settings for App Shell: disable scaling, handle safe areas, resize content for keyboard -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no, maximum-scale=1.0, interactive-widget=resizes-content" />
+    <title>T-Mobile Sales Center</title>
     
     <!-- PWA and Add to Home Screen -->
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icon.svg" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="T-Quote">
     <meta name="theme-color" content="#e20074" />
+    <meta name="format-detection" content="telephone=no">
 
-    <link rel="preconnect" href="httpshttps://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-    <script type="module" src="https://cdn.jsdelivr.net/npm/heroicons@2.1.3/24/outline/index.js"></script>
     <script>
       tailwind.config = {
         darkMode: 'class',
@@ -27,57 +49,71 @@
             colors: {
               'tmobile-magenta': '#e20074',
               'primary': 'var(--primary, #e20074)',
-              'background': 'var(--background, #f8fafc)',
-              'foreground': 'var(--foreground, #0f172a)',
+              'background': 'var(--background, #ffffff)',
+              'foreground': 'var(--foreground, #0a0a0a)',
               'card': 'var(--card, #ffffff)',
-              'card-foreground': 'var(--card-foreground, #0f172a)',
+              'card-foreground': 'var(--card-foreground, #0a0a0a)',
               'muted': 'var(--muted, #f1f5f9)',
               'muted-foreground': 'var(--muted-foreground, #64748b)',
               'border': 'var(--border, #e2e8f0)',
               'input': 'var(--input, #e2e8f0)',
+              'ring': 'var(--ring, #e20074)',
+              'destructive': 'var(--destructive, #ef4444)',
+              'destructive-foreground': 'var(--destructive-foreground, #fafafa)',
             },
             fontFamily: {
               sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
             },
             borderRadius: {
-              'xl': '1rem',
-              '2xl': '1.5rem',
-              '3xl': '2rem',
+              'lg': '0.5rem',
+              'xl': '0.75rem',
+              '2xl': '1rem',
             },
             keyframes: {
               'fade-in-down': {
-                '0%': {
-                  opacity: '0',
-                  transform: 'translateY(-10px)'
-                },
-                '100%': {
-                  opacity: '1',
-                  transform: 'translateY(0)'
-                },
+                '0%': { opacity: '0', transform: 'translateY(-10px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
               },
-              'slide-up': {
-                '0%': {
-                  transform: 'translateY(100%)'
-                },
-                '100%': {
-                  transform: 'translateY(0)'
-                },
+              'sheet-slide-in': {
+                '0%': { transform: 'translateY(100%)' },
+                '100%': { transform: 'translateY(0)' },
+              },
+              'sheet-slide-out': {
+                '0%': { transform: 'translateY(0)' },
+                '100%': { transform: 'translateY(100%)' },
+              },
+              'page-slide-in-right': {
+                '0%': { transform: 'translateX(20px)', opacity: 0 },
+                '100%': { transform: 'translateX(0)', opacity: 1 },
+              },
+              'page-slide-out-left': {
+                '0%': { transform: 'translateX(0)', opacity: 1 },
+                '100%': { transform: 'translateX(-20px)', opacity: 0 },
               },
               'shake': {
                 '10%, 90%': { transform: 'translate3d(-1px, 0, 0)' },
                 '20%, 80%': { transform: 'translate3d(2px, 0, 0)' },
                 '30%, 50%, 70%': { transform: 'translate3d(-4px, 0, 0)' },
                 '40%, 60%': { transform: 'translate3d(4px, 0, 0)' },
+              },
+              'stagger-in': {
+                '0%': { opacity: '0', transform: 'translateY(10px)' },
+                '100%': { opacity: '1', transform: 'translateY(0)' },
               }
             },
             animation: {
               'fade-in-down': 'fade-in-down 0.5s ease-out forwards',
-              'slide-up': 'slide-up 0.3s ease-out forwards',
+              'sheet-slide-in': 'sheet-slide-in 0.4s cubic-bezier(0.32, 0.72, 0, 1) forwards',
+              'sheet-slide-out': 'sheet-slide-out 0.3s ease-in forwards',
+              'page-slide-in-right': 'page-slide-in-right 0.35s cubic-bezier(0.25, 1, 0.5, 1) forwards',
+              'page-slide-out-left': 'page-slide-out-left 0.3s cubic-bezier(0.5, 0, 0.75, 0) forwards',
               'shake': 'shake 0.82s cubic-bezier(.36,.07,.19,.97) both',
+              'stagger-in': 'stagger-in 0.4s ease-out backwards',
             },
             boxShadow: {
-              'soft': '0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05)',
-              'soft-lg': '0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -4px rgba(0, 0, 0, 0.05)',
+              'soft': '0 4px 10px -2px rgba(0, 0, 0, 0.04)',
+              'soft-lg': '0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.05)',
+              'top-soft-lg': '0 -10px 25px -5px rgba(0, 0, 0, 0.05), 0 -8px 10px -6px rgba(0, 0, 0, 0.05)'
             }
           },
         },
@@ -86,45 +122,77 @@
     <style>
       :root {
         --primary: #e20074;
-        --background: #f8fafc;
-        --foreground: #0f172a;
+        --background: #f8fafc; /* slate-50 */
+        --foreground: #020817; /* slate-950 */
         --card: #ffffff;
-        --card-foreground: #0f172a;
-        --muted: #f1f5f9;
-        --muted-foreground: #64748b;
-        --border: #e2e8f0;
-        --input: #e2e8f0;
+        --card-foreground: #020817; /* slate-950 */
+        --muted: #f1f5f9; /* slate-100 */
+        --muted-foreground: #64748b; /* slate-500 */
+        --border: #e2e8f0; /* slate-200 */
+        --input: #e2e8f0; /* slate-200 */
+        --ring: #e20074;
+        --destructive: #ef4444; /* red-500 */
+        --destructive-foreground: #fafafa; /* slate-50 */
+        
+        /* Define safe area variables with fallbacks */
+        --safe-bottom: env(safe-area-inset-bottom, 20px);
       }
       .dark {
-        --background: #020617;
-        --foreground: #f8fafc;
-        --card: #0f172a;
-        --card-foreground: #f8fafc;
-        --muted: #1e293b;
-        --muted-foreground: #94a3b8;
-        --border: #1e293b;
-        --input: #1e293b;
+        --primary: #e20074;
+        --background: #020817; /* slate-950 */
+        --foreground: #f8fafc; /* slate-50 */
+        --card: #0f172a; /* slate-900 */
+        --card-foreground: #f8fafc; /* slate-50 */
+        --muted: #1e293b; /* slate-800 */
+        --muted-foreground: #94a3b8; /* slate-400 */
+        --border: #1e293b; /* slate-800 */
+        --input: #1e293b; /* slate-800 */
+        --ring: #e20074;
+        --destructive: #7f1d1d; /* red-900 */
+        --destructive-foreground: #fef2f2; /* red-50 */
       }
-      body {
-        -webkit-font-smoothing: antialiased;
-        -moz-osx-font-smoothing: grayscale;
+      
+      /* APP SHELL: Lock html/body to prevent browser chrome scrolling */
+      html, body {
+        height: 100dvh; /* Dynamic Viewport Height - Fixes mobile address bar issues */
+        width: 100%;
+        overflow: hidden; /* Prevent body scrolling */
+        position: fixed; /* Lock body in place */
+        top: 0;
+        left: 0;
+        margin: 0;
+        padding: 0;
+        overscroll-behavior: none; /* Disable rubber-banding */
+        -webkit-overflow-scrolling: touch;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+
+      /* Allow text selection in inputs and selectable areas */
+      input, textarea, .selectable, .prose {
+        -webkit-user-select: text;
+        user-select: text;
+      }
+
+      /* The internal app container handles the layout and scrolling */
+      #root {
+        height: 100%;
+        width: 100%;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* Utility: Hide scrollbars but allow scrolling */
+      .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+      }
+      .scrollbar-hide {
+        -ms-overflow-style: none;  /* IE and Edge */
+        scrollbar-width: none;  /* Firefox */
       }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/",
-    "react": "https://aistudiocdn.com/react@^19.1.1",
-    "react/": "https://aistudiocdn.com/react@^19.1.1/",
-    "firebase/app": "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js",
-    "firebase/auth": "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js",
-    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js",
-    "firebase/database": "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js",
-    "firebase/": "https://aistudiocdn.com/firebase@^12.3.0/"
-  }
-}
-</script>
-</head>
+  </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/index.tsx"></script>

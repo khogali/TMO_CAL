@@ -1,36 +1,43 @@
 import React from 'react';
 
 interface ButtonGroupProps {
-  label: string;
+  label?: string;
   name: string;
   value: string;
   options: { value: string; label: string; disabled?: boolean }[];
   onChange: (name: string, value: string) => void;
   className?: string;
+  size?: 'default' | 'sm';
 }
 
-const ButtonGroup: React.FC<ButtonGroupProps> = ({ label, name, value, options, onChange, className = 'grid-cols-3' }) => {
+const ButtonGroup: React.FC<ButtonGroupProps> = ({ label, name, value, options, onChange, className = 'grid-cols-3', size = 'default' }) => {
+  const sizeClasses = size === 'sm' ? 'h-9 px-2 text-xs' : 'h-10 px-2 text-sm';
+  
   return (
     <div>
-      <label className="block text-sm font-medium text-muted-foreground mb-2">
-        {label}
-      </label>
+      {label && (
+        <label className="block text-sm font-medium text-muted-foreground mb-2">
+          {label}
+        </label>
+      )}
       <div className={`grid ${className} gap-2`}>
         {options.map(option => (
           <button
             key={option.value}
             type="button"
-            onClick={() => onChange(name, option.value)}
+            onClick={() => !option.disabled && onChange(name, option.value)}
             disabled={option.disabled}
             className={`
-              h-12 px-2 rounded-xl text-sm font-semibold transition-colors duration-200 text-center
-              focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary focus:ring-offset-card
+              ${sizeClasses} rounded-md font-semibold transition-colors duration-200 text-center
+              focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2
               whitespace-nowrap
-              ${value === option.value
-                ? 'bg-primary text-white shadow-soft'
-                : 'bg-muted text-foreground hover:bg-border'
+              ${
+                option.disabled
+                  ? 'bg-muted text-muted-foreground opacity-50 cursor-not-allowed'
+                  : value === option.value
+                  ? 'bg-primary text-white shadow-sm'
+                  : 'bg-muted text-foreground hover:bg-border'
               }
-              ${option.disabled ? 'opacity-50 cursor-not-allowed hover:bg-muted' : ''}
             `}
           >
             {option.label}

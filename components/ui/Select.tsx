@@ -42,13 +42,13 @@ const Select: React.FC<SelectProps> = ({ label, name, options, value, onChange, 
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="relative w-full cursor-default rounded-xl border border-input bg-card py-2 pl-4 pr-10 text-left shadow-sm focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/50 sm:text-sm h-12"
+        className="relative w-full cursor-default rounded-md border border-input bg-background py-2 pl-3 pr-10 text-left ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 h-10 text-sm"
         aria-haspopup="listbox"
         aria-expanded={isOpen}
       >
         <span className="block truncate text-foreground">{selectedOption?.label}</span>
-        <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-          <svg className={`h-5 w-5 text-muted-foreground transform transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <span className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+          <svg className={`h-4 w-4 text-muted-foreground transform transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
             <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
           </svg>
         </span>
@@ -56,7 +56,7 @@ const Select: React.FC<SelectProps> = ({ label, name, options, value, onChange, 
 
       {isOpen && (
         <ul
-          className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-xl bg-card py-1 text-base shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none sm:text-sm"
+          className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-md bg-card py-1 text-base shadow-lg border border-border focus:outline-none sm:text-sm"
           tabIndex={-1}
           role="listbox"
           aria-label={label}
@@ -65,7 +65,7 @@ const Select: React.FC<SelectProps> = ({ label, name, options, value, onChange, 
             <li
               key={option.value}
               onClick={() => handleSelect(option.value)}
-              className="relative group cursor-default select-none py-2 pl-4 pr-10 text-card-foreground m-1 rounded-lg hover:bg-primary hover:text-white"
+              className="relative group cursor-default select-none py-2 pl-4 pr-10 text-card-foreground m-1 rounded-sm hover:bg-primary hover:text-white"
               role="option"
               aria-selected={option.value === value}
             >
