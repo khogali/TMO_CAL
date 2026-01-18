@@ -4,6 +4,9 @@ import { QuoteConfig } from './types';
 import { useData, useUI } from './context/AppContext';
 import QuoteForm from './components/QuoteForm';
 import QuoteSnapshot from './components/QuoteSnapshot';
+import { QuoteWizard } from './components/QuoteWizard'; 
+import PresentationMode from './components/PresentationMode'; 
+import CompetitorComparisonModal from './components/CompetitorComparisonModal'; 
 import { calculateQuoteTotals } from './utils/calculations';
 import { createInitialConfig } from './constants';
 import { Card, CardContent, CardHeader, CardTitle } from './components/ui/Card';
@@ -12,6 +15,71 @@ import { optimizeQuote } from './utils/optimization';
 import AIQuoteBuilderModal from './components/AIQuoteBuilderModal';
 import { applyPromoToConfig } from './utils/promoUtils';
 
+// --- Launcher Mode Component ---
+const LauncherMode: React.FC<{
+    onSelectWizard: () => void;
+    onSelectEditor: () => void;
+}> = ({ onSelectWizard, onSelectEditor }) => (
+    <div className="h-full w-full flex flex-col items-center justify-center p-6 bg-background animate-fade-in-down overflow-y-auto">
+        <div className="max-w-4xl w-full text-center space-y-10 py-10">
+            <div className="space-y-3">
+                <h1 className="text-4xl font-extrabold text-foreground tracking-tight sm:text-6xl">New Quote</h1>
+                <p className="text-lg sm:text-xl text-muted-foreground max-w-2xl mx-auto">Select your workflow to get started.</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 px-4">
+                <button 
+                    onClick={onSelectWizard}
+                    className="group relative flex flex-col items-center p-8 sm:p-10 rounded-[2.5rem] bg-gradient-to-b from-white to-gray-50 dark:from-slate-800 dark:to-slate-900 border-2 border-border hover:border-primary shadow-sm hover:shadow-2xl transition-all duration-300 text-center transform hover:-translate-y-1"
+                >
+                    <div className="w-24 h-24 bg-primary/10 rounded-3xl flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-300 shadow-inner">
+                        <span className="text-5xl">✨</span>
+                    </div>
+                    <h3 className="text-2xl font-bold text-foreground mb-3">Magic Wizard</h3>
+                    <p className="text-muted-foreground text-sm leading-relaxed max-w-xs mx-auto">
+                        Step-by-step guided experience. Perfect for complex family plans and new customers.
+                    </p>
+                </button>
+
+                <button 
+                    onClick={onSelectEditor}
+                    className="group relative flex flex-col items-center p-8 sm:p-10 rounded-[2.5rem] bg-gradient-to-b from-white to-gray-50 dark:from-slate-800 dark:to-slate-900 border-2 border-border hover:border-emerald-500 shadow-sm hover:shadow-2xl transition-all duration-300 text-center transform hover:-translate-y-1"
+                >
+                    <div className="w-24 h-24 bg-emerald-500/10 rounded-3xl flex items-center justify-center mb-8 group-hover:scale-110 transition-transform duration-300 shadow-inner">
+                        <span className="text-5xl">🛠️</span>
+                    </div>
+                    <h3 className="text-2xl font-bold text-foreground mb-3">Power Editor</h3>
+                    <p className="text-muted-foreground text-sm leading-relaxed max-w-xs mx-auto">
+                        Direct data entry form. Best for quick estimates and experienced reps.
+                    </p>
+                </button>
+            </div>
+        </div>
+    </div>
+);
+
+// --- Mode Switcher Floating Pill ---
+const ModeSwitcher: React.FC<{
+    mode: 'wizard' | 'editor';
+    onChange: (mode: 'wizard' | 'editor') => void;
+}> = ({ mode, onChange }) => (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-foreground/90 backdrop-blur-md text-background p-1.5 rounded-full shadow-2xl flex gap-1 ring-1 ring-white/10 scale-90 sm:scale-100">
+        <button 
+            onClick={() => onChange('wizard')}
+            className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all ${mode === 'wizard' ? 'bg-background text-foreground shadow-sm' : 'text-background/60 hover:text-background'}`}
+        >
+            Wizard
+        </button>
+        <button 
+            onClick={() => onChange('editor')}
+            className={`px-5 py-2.5 rounded-full text-xs font-bold transition-all ${mode === 'editor' ? 'bg-background text-foreground shadow-sm' : 'text-background/60 hover:text-background'}`}
+        >
+            Editor
+        </button>
+    </div>
+);
+
+// --- Main LeadCalculator Component ---
 const LeadCalculator: React.FC = () => {
   const { 
     planPricing, 
@@ -28,252 +96,181 @@ const LeadCalculator: React.FC = () => {
     handleDeleteTemplate,
     promoToApply,      
     clearPromoToApply,
-    wizardConfig, // NEW
-    clearWizardConfig // NEW
+    wizardConfig, 
+    clearWizardConfig,
   } = useData();
-  const { setToastMessage } = useUI();
+  const { setToastMessage, setIsWizardMode } = useUI();
 
+  // 'launcher' is the initial state unless data is loaded
+  const [interactionMode, setInteractionMode] = useState<'launcher' | 'wizard' | 'editor'>('launcher');
+  const [isPresentationMode, setIsPresentationMode] = useState(false);
+  const [isCompareModalOpen, setIsCompareModalOpen] = useState(false);
   const [config, setConfig] = useState<QuoteConfig>(() => createInitialConfig(planPricing));
-  const [lastAutoSave, setLastAutoSave] = useState<Date | null>(null);
-  const [isAutoSaving, setIsAutoSaving] = useState(false);
   const [isAiBuilderOpen, setIsAiBuilderOpen] = useState(false);
   
-  const lastSavedConfigRef = useRef<string>(JSON.stringify(createInitialConfig(planPricing)));
-  const configRef = useRef(config);
+  // Sync wizard mode state with context for global header/footer visibility control
+  useEffect(() => {
+      setIsWizardMode(interactionMode === 'wizard');
+  }, [interactionMode, setIsWizardMode]);
 
-  // Keep config ref updated for the interval
+  // Handle incoming external data (Leads, Promos, Wizard)
   useEffect(() => {
-    configRef.current = config;
-  }, [config]);
-  
-  // Logic to apply a promotion if passed from another screen
-  useEffect(() => {
-      if (promoToApply && promotions.length > 0) {
+      if (leadToLoad) {
+          const latestVersion = leadToLoad.versions?.[leadToLoad.versions.length - 1];
+          if (latestVersion) {
+              const baseConfig = createInitialConfig(planPricing);
+              const loadedConfig = { ...baseConfig, ...latestVersion.quoteConfig, id: leadToLoad.id, notes: leadToLoad.notes };
+              setConfig(loadedConfig);
+              setInteractionMode('editor'); // Default to editor for existing leads
+          }
+          setLeadToLoad(null);
+      } else if (wizardConfig) {
+          setConfig(wizardConfig);
+          clearWizardConfig();
+          setInteractionMode('editor'); // Wizard finished externally -> go to editor
+          setToastMessage("Quote generated!");
+      } else if (promoToApply) {
           const promo = promotions.find(p => p.id === promoToApply);
           if (promo) {
-              setConfig(prev => {
-                  const newConfig = applyPromoToConfig(prev, promo, deviceDatabase, servicePlans);
-                  setToastMessage(`Applied promotion: ${promo.name}`);
-                  return newConfig;
-              });
+              setConfig(prev => applyPromoToConfig(prev, promo, deviceDatabase, servicePlans));
+              setInteractionMode('editor');
+              setToastMessage(`Applied promotion: ${promo.name}`);
           }
           clearPromoToApply();
       }
-  }, [promoToApply, promotions, deviceDatabase, servicePlans, clearPromoToApply, setToastMessage]);
+  }, [leadToLoad, wizardConfig, promoToApply, planPricing, promotions, deviceDatabase, servicePlans]);
 
-  // Logic to apply Wizard Config
-  useEffect(() => {
-      if (wizardConfig) {
-          setConfig(wizardConfig);
-          clearWizardConfig();
-          setToastMessage("Generated quote from wizard!");
-      }
-  }, [wizardConfig, clearWizardConfig, setToastMessage]);
+  // Mode Switching
+  const switchToMode = (mode: 'wizard' | 'editor') => {
+      setInteractionMode(mode);
+  };
 
-  useEffect(() => {
-    if (leadToLoad) {
-      const latestVersion = leadToLoad.versions?.[leadToLoad.versions.length - 1];
-      if (latestVersion) {
-        const baseConfig = createInitialConfig(planPricing);
-        const loadedConfig = {
-          ...baseConfig,
-          ...latestVersion.quoteConfig,
-          id: leadToLoad.id,
-          notes: leadToLoad.notes,
-          discounts: { ...baseConfig.discounts, ...(latestVersion.quoteConfig.discounts || {}) },
-          fees: { ...baseConfig.fees, ...(latestVersion.quoteConfig.fees || {}) },
-          devices: latestVersion.quoteConfig.devices || [],
-          accessories: latestVersion.quoteConfig.accessories || [],
-        };
-        setConfig(loadedConfig);
-        lastSavedConfigRef.current = JSON.stringify(loadedConfig);
-      }
-      setLeadToLoad(null); 
-    }
-  }, [leadToLoad, setLeadToLoad, planPricing]);
-  
-  useEffect(() => {
-    if (planPricing.length > 0 && !planPricing.some(p => p.id === config.plan)) {
-      const newDefaultPlan = planPricing.find(p => p.availableFor.includes(config.customerType)) || planPricing[0];
-      setConfig(prev => ({ ...prev, plan: newDefaultPlan.id, lines: 1 }));
-    } else if (planPricing.length === 0) {
-      setConfig(prev => ({ ...prev, plan: '' }));
-    }
-  }, [planPricing, config.plan, config.customerType]);
-
-  // Auto-Save Interval
-  useEffect(() => {
-    const intervalId = setInterval(async () => {
-        const currentConfig = configRef.current;
-        const currentConfigStr = JSON.stringify(currentConfig);
-        
-        // Don't auto-save empty drafts (basic init state)
-        const hasContent = currentConfig.customerName || currentConfig.devices.length > 0 || (currentConfig.lines > 1) || currentConfig.id;
-        
-        if (currentConfigStr !== lastSavedConfigRef.current && hasContent) {
-            setIsAutoSaving(true);
-            try {
-                // Call save silently
-                const leadId = await handleSaveOrUpdateLead(currentConfig, { silent: true });
-                
-                // If it was a new lead, update the local config with the ID so next save is an update
-                if (leadId && typeof leadId === 'string' && !currentConfig.id) {
-                    setConfig(prev => ({ ...prev, id: leadId }));
-                    configRef.current = { ...configRef.current, id: leadId }; 
-                }
-                
-                lastSavedConfigRef.current = JSON.stringify(configRef.current);
-                setLastAutoSave(new Date());
-            } catch (error) {
-                console.error("Auto-save failed", error);
-            } finally {
-                setIsAutoSaving(false);
-            }
-        }
-    }, 2 * 60 * 1000); // 2 minutes
-
-    return () => clearInterval(intervalId);
-  }, [handleSaveOrUpdateLead]);
-  
   const totals = useMemo(() => calculateQuoteTotals(config, planPricing, servicePlans, discountSettings, insurancePlans, promotions, deviceDatabase), [config, planPricing, servicePlans, discountSettings, insurancePlans, promotions, deviceDatabase]);
-
-  const handleSaveTemplateClick = () => {
-    const templateName = window.prompt("Enter a name for this template:");
-    if (templateName) {
-        const { id, customerName, customerPhone, notes, ...restConfig } = config;
-        const templateConfig: QuoteConfig = {
-            ...restConfig,
-            customerName: '',
-            customerPhone: '',
-        };
-        handleSaveTemplate(templateName, templateConfig);
-    }
-  };
-
-  const handleLoadTemplate = (templateConfig: QuoteConfig) => {
-      const newConfig = {
-          ...createInitialConfig(planPricing),
-          ...templateConfig,
-          id: config.id, // Keep current ID if we are editing an existing lead
-          customerName: config.customerName, // Keep current customer details
-          customerPhone: config.customerPhone,
-          notes: config.notes
-      };
-      setConfig(newConfig);
-      setToastMessage('Template loaded!');
-  };
 
   const handleOptimize = () => {
       const { config: optimizedConfig, changesMade } = optimizeQuote(config, promotions, deviceDatabase);
       if (changesMade > 0) {
           setConfig(optimizedConfig);
-          setToastMessage(`Optimization complete! Applied ${changesMade} better promotion${changesMade !== 1 ? 's' : ''}.`);
+          setToastMessage(`Applied ${changesMade} optimizations.`);
       } else {
-          setToastMessage('Your quote is already optimized for the best available deals.');
+          setToastMessage('Already optimized.');
       }
   };
 
-  const handleAiBuild = () => {
-    setIsAiBuilderOpen(true);
+  const handleSaveTemplateClick = () => {
+      const name = window.prompt("Template Name:");
+      if (name) handleSaveTemplate(name, { ...config, id: undefined, customerName: '', customerPhone: '' });
   };
 
-  const handleApplyAiConfig = (newConfig: QuoteConfig) => {
+  const handleLoadTemplate = (templateConfig: QuoteConfig) => {
+      setConfig({ ...createInitialConfig(planPricing), ...templateConfig });
+      setToastMessage('Template loaded.');
+  };
+
+  const handleWizardComplete = (newConfig: QuoteConfig) => {
       setConfig(newConfig);
-      setToastMessage('Quote updated from AI assistant!');
+      setInteractionMode('editor');
+      setToastMessage("Quote created from Wizard!");
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12 space-y-8">
-      <header>
-          <div className="flex items-center justify-between flex-wrap gap-4">
-              <div>
-                  <h1 className="text-3xl font-bold text-foreground tracking-tight">New Quote</h1>
-                  <p className="mt-1 text-base text-muted-foreground">Build a comprehensive quote, or use AI to speed things up.</p>
-              </div>
-              <div className="flex items-center gap-3">
-                  {(isAutoSaving || lastAutoSave) && (
-                      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground animate-fade-in-down mr-1">
-                          {isAutoSaving ? (
-                              <>
-                                <svg className="animate-spin h-3.5 w-3.5 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                </svg>
-                                <span>Saving...</span>
-                              </>
-                          ) : (
-                              <>
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-green-500" viewBox="0 0 20 20" fill="currentColor">
-                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                </svg>
-                                <span>Saved {lastAutoSave?.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
-                              </>
-                          )}
-                      </div>
-                  )}
-                  <Button variant="secondary" onClick={handleOptimize} disabled={config.devices.length === 0}>
-                      ⚡️ Optimize Deals
-                  </Button>
-                  <Button onClick={handleAiBuild} className="bg-gradient-to-r from-indigo-500 to-purple-600 border-none hover:from-indigo-600 hover:to-purple-700 text-white shadow-md">
-                      ✨ Build with AI
-                  </Button>
-              </div>
-          </div>
-      </header>
-
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
-        <div className="lg:col-span-3 space-y-6">
-          {savedTemplates && savedTemplates.length > 0 && (
-              <Card>
-                  <CardHeader>
-                      <CardTitle>Load from Template</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                      <div className="flex flex-wrap gap-2">
-                          {savedTemplates.map(template => (
-                              <div key={template.id} className="relative group">
-                                  <Button variant="secondary" onClick={() => handleLoadTemplate(template.quoteConfig)}>
-                                      {template.name}
-                                  </Button>
-                                  <button
-                                      onClick={() => handleDeleteTemplate(template.id)}
-                                      className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity"
-                                      title="Delete Template"
-                                  >
-                                      &times;
-                                  </button>
-                              </div>
-                          ))}
-                      </div>
-                  </CardContent>
-              </Card>
-          )}
-          <QuoteForm
-            mode="full"
-            config={config}
-            setConfig={setConfig}
-            totals={totals}
+    <div className="h-full w-full relative flex flex-col bg-background overflow-hidden">
+      
+      {/* 1. Launcher Screen */}
+      {interactionMode === 'launcher' && (
+          <LauncherMode 
+            onSelectWizard={() => switchToMode('wizard')} 
+            onSelectEditor={() => switchToMode('editor')} 
           />
-        </div>
-        <div className="lg:col-span-2">
-          <div className="sticky top-28 space-y-6">
-            <QuoteSnapshot 
-              mode="full" 
-              config={config} 
-              totals={totals} 
-              onSave={() => handleSaveOrUpdateLead(config)} 
-              onSaveTemplate={handleSaveTemplateClick}
-            />
-          </div>
-        </div>
-      </div>
+      )}
 
+      {/* 2. Wizard Screen */}
+      {interactionMode === 'wizard' && (
+          <div className="absolute inset-0 bg-background z-20 flex flex-col">
+              <QuoteWizard 
+                  initialConfig={config} 
+                  onConfigChange={handleWizardComplete} 
+              />
+              {/* Floating switcher allows bailing out if needed */}
+              <div className="fixed top-6 right-6 z-50">
+                  <button onClick={() => setInteractionMode('launcher')} className="text-muted-foreground hover:text-foreground">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+              </div>
+          </div>
+      )}
+
+      {/* 3. Editor Screen */}
+      {interactionMode === 'editor' && (
+          <div className="h-full w-full relative flex flex-col">
+              {/* Toolbar */}
+              <div className="flex-shrink-0 bg-background/80 backdrop-blur-md border-b border-border p-4 flex gap-2 overflow-x-auto scrollbar-hide z-10">
+                  <div className="flex items-center gap-2 mr-auto">
+                        <Button size="sm" variant="outline" onClick={() => setInteractionMode('launcher')}>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+                        </Button>
+                        {savedTemplates.length > 0 && (
+                            <div className="flex gap-2 mr-2 border-r border-border pr-2">
+                                {savedTemplates.slice(0, 2).map(t => (
+                                    <Button key={t.id} variant="secondary" size="sm" onClick={() => handleLoadTemplate(t.quoteConfig)} className="whitespace-nowrap bg-muted">
+                                        Load {t.name}
+                                    </Button>
+                                ))}
+                            </div>
+                        )}
+                        <Button size="sm" variant="secondary" onClick={() => setIsCompareModalOpen(true)}>Compare</Button>
+                        <Button size="sm" variant="secondary" onClick={() => setIsPresentationMode(true)}>Present</Button>
+                        <Button size="sm" variant="secondary" onClick={handleOptimize}>⚡️ Optimize</Button>
+                  </div>
+                  <Button size="sm" onClick={() => setIsAiBuilderOpen(true)} className="bg-gradient-to-r from-indigo-500 to-purple-600 border-0 text-white shadow-md">
+                      ✨ AI Assist
+                  </Button>
+              </div>
+
+              {/* Scrollable Form Area */}
+              <div className="flex-1 overflow-y-auto p-4 lg:p-8 pb-32">
+                  <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-5 gap-8">
+                      <div className="lg:col-span-3 space-y-6">
+                          <QuoteForm mode="full" config={config} setConfig={setConfig} totals={totals} />
+                      </div>
+                      <div className="lg:col-span-2">
+                          <div className="lg:sticky lg:top-4 space-y-6">
+                              <QuoteSnapshot 
+                                  mode="full" 
+                                  config={config} 
+                                  totals={totals} 
+                                  onSave={() => handleSaveOrUpdateLead(config)} 
+                                  onSaveTemplate={handleSaveTemplateClick} 
+                              />
+                          </div>
+                      </div>
+                  </div>
+              </div>
+              
+              <ModeSwitcher mode="editor" onChange={switchToMode} />
+          </div>
+      )}
+
+      {/* Modals */}
       <AIQuoteBuilderModal 
         isOpen={isAiBuilderOpen} 
         onClose={() => setIsAiBuilderOpen(false)} 
-        onApplyConfig={handleApplyAiConfig}
-        currentConfig={config}
+        onApplyConfig={(c) => { setConfig(c); setToastMessage("AI Quote Applied"); }} 
+        currentConfig={config} 
       />
+      <CompetitorComparisonModal 
+        isOpen={isCompareModalOpen} 
+        onClose={() => setIsCompareModalOpen(false)} 
+        currentQuote={totals} 
+        config={config} 
+      />
+      {isPresentationMode && (
+          <PresentationMode 
+              config={config} 
+              totals={totals} 
+              onClose={() => setIsPresentationMode(false)} 
+          />
+      )}
     </div>
   );
 };

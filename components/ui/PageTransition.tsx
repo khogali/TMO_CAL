@@ -8,15 +8,15 @@ interface PageTransitionProps {
 }
 
 const variants = {
-  initial: { opacity: 0, x: 20 },
-  animate: { opacity: 1, x: 0 },
-  exit: { opacity: 0, x: -20 },
+  initial: { opacity: 0, scale: 0.98 },
+  animate: { opacity: 1, scale: 1 },
+  exit: { opacity: 0, scale: 1.02 },
 };
 
 const transition = {
-  type: 'spring',
-  stiffness: 260,
-  damping: 20,
+  type: 'tween',
+  ease: 'easeInOut',
+  duration: 0.25,
 };
 
 const PageTransition: React.FC<PageTransitionProps> = ({ children, view }) => {
@@ -29,7 +29,8 @@ const PageTransition: React.FC<PageTransitionProps> = ({ children, view }) => {
         animate="animate"
         exit="exit"
         transition={transition}
-        className="w-full h-full flex flex-col"
+        // Force full size to prevent content collapse
+        className="w-full h-full flex flex-col overflow-hidden"
       >
         {children}
       </motion.div>

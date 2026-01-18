@@ -5,6 +5,7 @@ import { useData, useAuth } from '../context/AppContext';
 import { QuoteConfig, DeviceCategory, CustomerType } from '../types';
 import { createInitialConfig } from '../constants';
 import { useScrollLock } from '../hooks/useScrollLock';
+import Portal from './ui/Portal';
 
 interface LiveAssistantProps {
   isOpen: boolean;
@@ -333,64 +334,66 @@ const LiveAssistant: React.FC<LiveAssistantProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-md animate-fade-in-down">
-        <div className="flex flex-col items-center justify-center w-full h-full max-w-lg p-8 relative">
-            <button onClick={onClose} className="absolute top-8 right-8 text-white/50 hover:text-white transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-            </button>
+    <Portal>
+      <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-md animate-fade-in-down touch-none">
+          <div className="flex flex-col items-center justify-center w-full h-full max-w-lg p-8 relative">
+              <button onClick={onClose} className="absolute top-8 right-8 text-white/50 hover:text-white transition-colors z-50">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
 
-            <div className="mb-12 text-center">
-                <h2 className="text-2xl font-bold text-white mb-2">
-                    {status === 'connecting' && 'Connecting...'}
-                    {status === 'listening' && 'Listening...'}
-                    {status === 'speaking' && 'T-Quote AI'}
-                    {status === 'processing' && 'Generating Quote...'}
-                    {status === 'error' && 'Connection Error'}
-                </h2>
-                <p className="text-white/60">
-                    {status === 'error' && errorMsg ? errorMsg : 
-                     status === 'listening' ? 'Go ahead, I\'m listening.' : 
-                     status === 'speaking' ? 'Speaking...' : 
-                     status === 'processing' ? 'Building your quote...' : ''}
-                </p>
-            </div>
+              <div className="mb-12 text-center">
+                  <h2 className="text-2xl font-bold text-white mb-2">
+                      {status === 'connecting' && 'Connecting...'}
+                      {status === 'listening' && 'Listening...'}
+                      {status === 'speaking' && 'T-Quote AI'}
+                      {status === 'processing' && 'Generating Quote...'}
+                      {status === 'error' && 'Connection Error'}
+                  </h2>
+                  <p className="text-white/60">
+                      {status === 'error' && errorMsg ? errorMsg : 
+                      status === 'listening' ? 'Go ahead, I\'m listening.' : 
+                      status === 'speaking' ? 'Speaking...' : 
+                      status === 'processing' ? 'Building your quote...' : ''}
+                  </p>
+              </div>
 
-            <div className="relative flex items-center justify-center">
-                <div 
-                    className={`absolute rounded-full blur-3xl transition-all duration-200 ${status === 'error' ? 'bg-red-500/40' : 'bg-primary/40'}`}
-                    style={{ width: `${200 + (volume * 100)}px`, height: `${200 + (volume * 100)}px` }}
-                />
-                <div 
-                    className={`relative w-32 h-32 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300
-                    ${status === 'listening' ? 'bg-white scale-100' : 
-                      status === 'speaking' ? 'bg-gradient-to-tr from-primary to-purple-500 scale-110' : 
-                      status === 'processing' ? 'bg-blue-500 scale-90 animate-pulse' :
-                      'bg-gray-500 scale-90'}
-                    `}
-                >
-                    {status === 'listening' && (
-                        <div 
-                            className="absolute rounded-full bg-white/30"
-                            style={{ width: `${100 + (volume * 200)}%`, height: `${100 + (volume * 200)}%`, transition: 'all 0.1s ease-out' }} 
-                        />
-                    )}
-                    <svg xmlns="http://www.w3.org/2000/svg" className={`h-12 w-12 ${status === 'speaking' || status === 'processing' ? 'text-white' : 'text-primary'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                    </svg>
-                </div>
-            </div>
+              <div className="relative flex items-center justify-center">
+                  <div 
+                      className={`absolute rounded-full blur-3xl transition-all duration-200 ${status === 'error' ? 'bg-red-500/40' : 'bg-primary/40'}`}
+                      style={{ width: `${200 + (volume * 100)}px`, height: `${200 + (volume * 100)}px` }}
+                  />
+                  <div 
+                      className={`relative w-32 h-32 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300
+                      ${status === 'listening' ? 'bg-white scale-100' : 
+                        status === 'speaking' ? 'bg-gradient-to-tr from-primary to-purple-500 scale-110' : 
+                        status === 'processing' ? 'bg-blue-500 scale-90 animate-pulse' :
+                        'bg-gray-500 scale-90'}
+                      `}
+                  >
+                      {status === 'listening' && (
+                          <div 
+                              className="absolute rounded-full bg-white/30"
+                              style={{ width: `${100 + (volume * 200)}%`, height: `${100 + (volume * 200)}%`, transition: 'all 0.1s ease-out' }} 
+                          />
+                      )}
+                      <svg xmlns="http://www.w3.org/2000/svg" className={`h-12 w-12 ${status === 'speaking' || status === 'processing' ? 'text-white' : 'text-primary'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                      </svg>
+                  </div>
+              </div>
 
-            <p className="mt-16 text-white/40 text-sm max-w-xs text-center">
-                Try asking: "Create a quote for 4 lines on Go5G Plus."
-            </p>
+              <p className="mt-16 text-white/40 text-sm max-w-xs text-center">
+                  Try asking: "Create a quote for 4 lines on Go5G Plus."
+              </p>
 
-            {status === 'error' && (
-                <button onClick={onClose} className="mt-8 px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-full text-sm font-bold">
-                    Close & Retry
-                </button>
-            )}
-        </div>
-    </div>
+              {status === 'error' && (
+                  <button onClick={onClose} className="mt-8 px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-full text-sm font-bold">
+                      Close & Retry
+                  </button>
+              )}
+          </div>
+      </div>
+    </Portal>
   );
 };
 

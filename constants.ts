@@ -1,3 +1,4 @@
+
 import { CustomerType, PlanDetails, InsurancePlan, Promotion, PromotionConditionField, PromotionConditionOperator, PromotionEffectType, PricingModel, GuidanceItem, QuoteConfig, PlanPricingData, GuidancePlacement, GuidanceStyle, GuidanceConditionField, Store, UserRole, TMobileUpgradeData, DeviceDatabase, PromotionCategory, DevicePromoRequirements, TradeInRequirement, ServicePlan, DeviceCategory, StackingGroup } from './types';
 
 // IMPORTANT: This is now a fallback for the initial admin user.
@@ -146,6 +147,7 @@ export const INITIAL_DEVICE_DATABASE: DeviceDatabase = {
             defaultTermMonths: 24,
             tags: ['5g', 'flagship', 'new_release', 'promo_eligible_bogo', 'apple_pro'],
             whatsInTheBox: ['iPhone 15 Pro', 'USB-C Charge Cable'],
+            stockStatus: 'in_stock',
             variants: [
                 { sku: 'APL-IP15P-128-NTL', storage: 128, color: 'Natural Titanium', price: 999 },
                 { sku: 'APL-IP15P-256-NTL', storage: 256, color: 'Natural Titanium', price: 1099 },
@@ -160,6 +162,7 @@ export const INITIAL_DEVICE_DATABASE: DeviceDatabase = {
             defaultTermMonths: 24,
             tags: ['5g', 'new_release', 'apple_base'],
             whatsInTheBox: ['iPhone 15', 'USB-C Charge Cable'],
+            stockStatus: 'low_stock',
             variants: [
                 { sku: 'APL-IP15-128-BLK', storage: 128, color: 'Black', price: 829 },
                 { sku: 'APL-IP15-256-BLK', storage: 256, color: 'Black', price: 929 },
@@ -173,6 +176,7 @@ export const INITIAL_DEVICE_DATABASE: DeviceDatabase = {
             defaultTermMonths: 24,
             tags: ['5g', 'flagship', 'new_release', 'android', 'samsung_s'],
             whatsInTheBox: ['Samsung S24 Ultra', 'S Pen', 'USB-C Cable', 'Ejection Pin'],
+            stockStatus: 'in_stock',
             variants: [
                 { sku: 'SAM-S24U-256-GRY', storage: 256, color: 'Titanium Gray', price: 1299 },
                 { sku: 'SAM-S24U-512-GRY', storage: 512, color: 'Titanium Gray', price: 1419 },
@@ -186,6 +190,7 @@ export const INITIAL_DEVICE_DATABASE: DeviceDatabase = {
             defaultTermMonths: 24,
             tags: ['wearable', 'new_release', 'apple_watch'],
             whatsInTheBox: ['Apple Watch SE', 'Watch Band', 'Magnetic Charging Cable'],
+            stockStatus: 'in_stock',
             variants: [
                 { sku: 'APL-WSE-40-MID', storage: 32, color: 'Midnight', price: 299 }
             ]
@@ -198,6 +203,7 @@ export const INITIAL_DEVICE_DATABASE: DeviceDatabase = {
             defaultTermMonths: 24,
             tags: ['tablet', 'apple_ipad'],
             whatsInTheBox: ['iPad', 'USB-C Charge Cable', 'USB-C Power Adapter'],
+            stockStatus: 'backorder',
             variants: [
                 { sku: 'APL-IP10-64-BLU', storage: 64, color: 'Blue', price: 599 }
             ]

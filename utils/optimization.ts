@@ -1,3 +1,4 @@
+
 import { QuoteConfig, Promotion, DeviceDatabase, PromotionCategory, PromotionEffectType, TradeInRequirement, Device, StackingGroup } from '../types';
 import { checkCondition } from './conditionUtils';
 
@@ -58,7 +59,7 @@ export const optimizeQuote = (
                 
                 // Let's check value
                 let promoValue = 0;
-                promo.effects.forEach(effect => {
+                (promo.effects || []).forEach(effect => {
                     if (effect.type === PromotionEffectType.DEVICE_CREDIT_FIXED) promoValue += effect.value;
                     else if (effect.type === PromotionEffectType.DEVICE_INSTANT_REBATE) promoValue += effect.value;
                 });
@@ -141,7 +142,7 @@ export const optimizeQuote = (
         // Calculate Value for each promo
         const valuedPromos = eligiblePromos.map(promo => {
             let totalValue = 0;
-            promo.effects.forEach(effect => {
+            (promo.effects || []).forEach(effect => {
                 if (effect.type === PromotionEffectType.DEVICE_CREDIT_FIXED) {
                     totalValue += effect.value;
                 } else if (effect.type === PromotionEffectType.DEVICE_INSTANT_REBATE) {

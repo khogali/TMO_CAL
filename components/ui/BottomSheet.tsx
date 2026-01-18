@@ -1,3 +1,4 @@
+
 import React, { useRef, useState } from 'react';
 import Portal from './Portal';
 import { useScrollLock } from '../../hooks/useScrollLock';
@@ -75,18 +76,18 @@ const BottomSheet: React.FC<BottomSheetProps> = ({ isOpen, onClose, title, child
         style={{ height: '100dvh', maxHeight: '-webkit-fill-available' }}
       >
         <div 
-            className={`absolute inset-0 bg-black/60 backdrop-blur-sm pointer-events-auto transition-opacity duration-300 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
+            className={`absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-auto transition-opacity duration-300 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
             onClick={closeSheet}
             aria-hidden="true"
         />
         <div
           ref={sheetRef}
-          className={`bg-card w-full max-w-md border-t border-border flex flex-col max-h-[90vh] rounded-t-2xl sm:rounded-2xl shadow-2xl pointer-events-auto overflow-hidden transform transition-transform duration-300 ${isClosing ? 'translate-y-full' : 'translate-y-0'}`}
+          className={`bg-card/90 backdrop-blur-xl w-full max-w-md border-t border-border flex flex-col max-h-[90vh] rounded-t-[2.5rem] sm:rounded-[2.5rem] shadow-2xl pointer-events-auto overflow-hidden transform transition-transform duration-300 ${isClosing ? 'translate-y-full' : 'translate-y-0'}`}
           onClick={(e) => e.stopPropagation()}
           onAnimationEnd={handleAnimationEnd}
         >
           <div 
-            className="p-4 sm:p-5 border-b border-border flex justify-between items-center relative flex-shrink-0 cursor-grab active:cursor-grabbing select-none bg-card z-10"
+            className="p-4 sm:p-5 border-b border-border flex justify-between items-center relative flex-shrink-0 cursor-grab active:cursor-grabbing select-none z-10"
             onTouchStart={onTouchStart}
             onTouchMove={onTouchMove}
             onTouchEnd={onTouchEnd}

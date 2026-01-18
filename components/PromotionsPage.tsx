@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { useData } from '../context/AppContext';
 import { Promotion, PromotionCategory, PromotionEffectType, TradeInRequirement, StackingGroup } from '../types';
@@ -89,7 +90,7 @@ const PromotionCard: React.FC<PromotionCardProps> = ({ promo, onClick, onApply, 
     
     // Calculate estimated value
     let estimatedValue = 0;
-    promo.effects.forEach(effect => {
+    (promo.effects || []).forEach(effect => {
         if (typeof effect.value === 'number') {
              if ([PromotionEffectType.DEVICE_CREDIT_FIXED, PromotionEffectType.DEVICE_INSTANT_REBATE, PromotionEffectType.PLAN_DISCOUNT_FIXED, PromotionEffectType.SERVICE_PLAN_DISCOUNT_FIXED].includes(effect.type)) {
                  estimatedValue += effect.value;
@@ -124,7 +125,7 @@ const PromotionCard: React.FC<PromotionCardProps> = ({ promo, onClick, onApply, 
                     {isSelectedForCompare ? (
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-white" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
                     ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-muted-foreground opacity-50 hover:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-muted-foreground opacity-50 hover:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
                     )}
                 </div>
             </div>
@@ -186,7 +187,7 @@ const PromotionListItem: React.FC<PromotionCardProps> = ({ promo, onClick, onApp
     const isBogo = !!promo.bogoConfig;
     
     let estimatedValue = 0;
-    promo.effects.forEach(effect => {
+    (promo.effects || []).forEach(effect => {
         if (typeof effect.value === 'number') {
              if ([PromotionEffectType.DEVICE_CREDIT_FIXED, PromotionEffectType.DEVICE_INSTANT_REBATE, PromotionEffectType.PLAN_DISCOUNT_FIXED, PromotionEffectType.SERVICE_PLAN_DISCOUNT_FIXED].includes(effect.type)) {
                  estimatedValue += effect.value;
@@ -235,7 +236,7 @@ const PromotionListItem: React.FC<PromotionCardProps> = ({ promo, onClick, onApp
                     {isSelectedForCompare ? (
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-white" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
                     ) : (
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
                     )}
                 </div>
 
@@ -254,7 +255,7 @@ const PromotionListItem: React.FC<PromotionCardProps> = ({ promo, onClick, onApp
 const FeaturedPromo: React.FC<{ promo: Promotion; onApply: () => void }> = ({ promo, onApply }) => {
     const theme = getCategoryTheme(promo.category);
     let estimatedValue = 0;
-    promo.effects.forEach(effect => {
+    (promo.effects || []).forEach(effect => {
         if (typeof effect.value === 'number' && [PromotionEffectType.DEVICE_CREDIT_FIXED, PromotionEffectType.DEVICE_INSTANT_REBATE].includes(effect.type)) {
             estimatedValue += effect.value;
         }
@@ -341,7 +342,7 @@ const ComparisonModal: React.FC<{
                             <div className="bg-muted/30 border border-border p-4 rounded-xl text-center">
                                 <span className="block text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Total Value</span>
                                 <span className="block text-2xl font-extrabold text-foreground">
-                                    ${promo.effects.reduce((acc, e) => acc + (typeof e.value === 'number' ? e.value : 0), 0)}
+                                    ${(promo.effects || []).reduce((acc, e) => acc + (typeof e.value === 'number' ? e.value : 0), 0)}
                                 </span>
                             </div>
 
@@ -704,7 +705,7 @@ ${detailPromo.deviceRequirements?.newLineRequired ? '- New Line Required' : ''}
                             <div>
                                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3">Benefits</h3>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    {detailPromo.effects.map((effect, i) => (
+                                    {(detailPromo.effects || []).map((effect, i) => (
                                         <div key={i} className="flex items-center gap-3 p-3 rounded-xl bg-green-500/10 border border-green-500/20 text-green-700 dark:text-green-400">
                                             <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg>
                                             <span className="font-medium text-sm">

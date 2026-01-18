@@ -1,19 +1,18 @@
+
 import React from 'react';
 
-// Card Container
 const Card = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
   <div
     ref={ref}
-    className={`bg-card text-card-foreground rounded-xl shadow-sm border border-border ${className}`}
+    className={`bg-card text-card-foreground rounded-2xl shadow-soft border border-border ${className}`}
     {...props}
   />
 ));
 Card.displayName = 'Card';
 
-// Card Header
 const CardHeader = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
@@ -26,25 +25,23 @@ const CardHeader = React.forwardRef<
 ));
 CardHeader.displayName = 'CardHeader';
 
-// Card Title
 const CardTitle = React.forwardRef<
   HTMLParagraphElement,
   React.HTMLAttributes<HTMLHeadingElement>
 >(({ className, ...props }, ref) => (
   <h3
     ref={ref}
-    className={`text-lg font-bold text-card-foreground ${className}`}
+    className={`text-lg font-bold leading-tight tracking-tight ${className}`}
     {...props}
   />
 ));
 CardTitle.displayName = 'CardTitle';
 
-// Card Content
 const CardContent = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement>
 >(({ className, ...props }, ref) => (
-  <div ref={ref} className={`p-6 ${className}`} {...props} />
+  <div ref={ref} className={`p-6 pt-0 ${className}`} {...props} />
 ));
 CardContent.displayName = 'CardContent';
 

@@ -1,5 +1,6 @@
+
 import React, { useState, useMemo } from 'react';
-import { QuoteConfig, Device, DeviceDatabase, DeviceCategory, ServicePlan, PromotionCategory, TradeInRequirement } from '../../types';
+import { QuoteConfig, Device, DeviceDatabase, DeviceCategory, ServicePlan, PromotionCategory, TradeInRequirement, Accessory } from '../../types';
 import { Card, CardHeader, CardContent } from '../ui/Card';
 import Section from '../ui/Section';
 import Input from '../ui/Input';
@@ -7,6 +8,7 @@ import Select from '../ui/Select';
 import { useData } from '../../context/AppContext';
 import ButtonGroup from '../ui/ButtonGroup';
 import { checkCondition } from '../../utils/conditionUtils';
+import { DeviceEngine } from '../../utils/deviceEngine';
 
 interface DeviceCardProps {
   device: Device;
@@ -14,11 +16,13 @@ interface DeviceCardProps {
   config: QuoteConfig; // Pass full config for condition checking
   onDeviceChange: (index: number, field: keyof Device, value: any) => void;
   onRemove: (id: string) => void;
+  onAddAccessories: (accessories: Accessory[]) => void;
   deviceDatabase: DeviceDatabase;
   servicePlans: ServicePlan[];
+  engine: DeviceEngine;
 }
 
-const DeviceCard: React.FC<DeviceCardProps> = ({ device, index, config, onDeviceChange, onRemove, deviceDatabase, servicePlans }) => {
+const DeviceCard: React.FC<DeviceCardProps> = ({ device, index, config, onDeviceChange, onRemove, onAddAccessories, deviceDatabase, servicePlans, engine }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const { promotions, insurancePlans } = useData();
   const isByod = device.isByod || false;
@@ -67,9 +71,6 @@ const DeviceCard: React.FC<DeviceCardProps> = ({ device, index, config, onDevice
 
   const availablePromos = useMemo(() => {
     if ((!device.modelId || !selectedModel) && !isByod) return [];
-    // BYOD promos might exist, usually Service/BTS promos apply to plans not devices, 
-    // but some device promos might be "Bring your own device get X". 
-    // For now, assume device promos require a sold device unless configured otherwise.
     if (isByod) return []; 
     
     return promotions.filter(promo => {
@@ -94,6 +95,26 @@ const DeviceCard: React.FC<DeviceCardProps> = ({ device, index, config, onDevice
     return promotions.find(p => p.id === device.appliedPromoId);
   }, [device.appliedPromoId, promotions]);
 
+  // --- ENGINE RECOMMENDATIONS ---
+  const upsellModel = useMemo(() => {
+      if (!selectedModel || isByod) return null;
+      return engine.getUpsell(selectedModel.id);
+  }, [selectedModel, isByod, engine]);
+
+  const handleUpsellClick = () => {
+      if (upsellModel) {
+          onDeviceChange(index, 'modelId', upsellModel.id);
+          // Also reset variant
+          onDeviceChange(index, 'variantSku', '');
+      }
+  };
+
+  const handleAddBundle = () => {
+      if (selectedModel) {
+          const accessories = engine.getSuggestedAccessories(selectedModel.id);
+          onAddAccessories(accessories);
+      }
+  };
 
   const getDeviceIcon = (category: DeviceCategory) => {
     switch (category) {
@@ -101,7 +122,7 @@ const DeviceCard: React.FC<DeviceCardProps> = ({ device, index, config, onDevice
         case DeviceCategory.TABLET: return <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>;
         case DeviceCategory.TRACKER: return <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>;
         case DeviceCategory.PHONE:
-        default: return <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>;
+        default: return <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3" /></svg>;
     }
   };
 
@@ -141,9 +162,39 @@ const DeviceCard: React.FC<DeviceCardProps> = ({ device, index, config, onDevice
               </div>
 
               {!isByod && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <Select label="Device Model" name="modelId" value={device.modelId || ''} onChange={(_, v) => onDeviceChange(index, 'modelId', v)} options={filteredDeviceOptions} />
-                      <Select label="Variant (Color/Storage)" name="variantSku" value={device.variantSku || ''} onChange={(_, v) => onDeviceChange(index, 'variantSku', v)} options={variantOptions} />
+                  <div className="space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <Select label="Device Model" name="modelId" value={device.modelId || ''} onChange={(_, v) => onDeviceChange(index, 'modelId', v)} options={filteredDeviceOptions} />
+                          <Select label="Variant (Color/Storage)" name="variantSku" value={device.variantSku || ''} onChange={(_, v) => onDeviceChange(index, 'variantSku', v)} options={variantOptions} />
+                      </div>
+                      
+                      {/* Engine Suggestions */}
+                      {selectedModel && (
+                          <div className="flex flex-col gap-2">
+                              {/* Upsell */}
+                              {upsellModel && (
+                                  <div onClick={handleUpsellClick} className="cursor-pointer bg-gradient-to-r from-indigo-500/10 to-purple-500/10 border border-indigo-200 dark:border-indigo-800 rounded-lg p-2.5 flex items-center justify-between group hover:border-indigo-400 transition-colors">
+                                      <div className="flex items-center gap-2 text-sm text-indigo-700 dark:text-indigo-300">
+                                          <span className="bg-indigo-100 dark:bg-indigo-900/50 p-1 rounded">🚀</span>
+                                          <span>
+                                              <strong>Upgrade:</strong> Get the <strong>{upsellModel.name}</strong> for +${engine.getPriceDifference(selectedModel.id, upsellModel.id).toFixed(2)}/mo
+                                          </span>
+                                      </div>
+                                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-indigo-400 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                  </div>
+                              )}
+                              
+                              {/* Accessory Bundle */}
+                              <button 
+                                type="button"
+                                onClick={handleAddBundle}
+                                className="flex items-center justify-center gap-2 p-2 rounded-lg border border-dashed border-emerald-300 bg-emerald-50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-400 text-sm font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/20 transition-colors"
+                              >
+                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+                                  Auto-Add Essentials (Screen & Case)
+                              </button>
+                          </div>
+                      )}
                   </div>
               )}
 
@@ -208,6 +259,7 @@ interface DeviceSectionProps {
 
 const DeviceSection: React.FC<DeviceSectionProps> = ({ config, setConfig }) => {
   const { deviceDatabase, servicePlans } = useData();
+  const engine = useMemo(() => new DeviceEngine(deviceDatabase), [deviceDatabase]);
 
   const handleAddDevice = (category: DeviceCategory) => {
     const defaultModel = deviceDatabase.devices.find(d => d.category === category);
@@ -270,6 +322,13 @@ const DeviceSection: React.FC<DeviceSectionProps> = ({ config, setConfig }) => {
     });
   };
 
+  const handleAddAccessories = (newAccessories: Accessory[]) => {
+    setConfig(prev => ({
+        ...prev,
+        accessories: [...prev.accessories, ...newAccessories]
+    }));
+  };
+
   const phones = config.devices.filter(d => d.category === DeviceCategory.PHONE);
   const canAddPhone = phones.length < config.lines;
 
@@ -284,8 +343,10 @@ const DeviceSection: React.FC<DeviceSectionProps> = ({ config, setConfig }) => {
             config={config}
             onDeviceChange={handleDeviceChange}
             onRemove={handleRemoveDevice}
+            onAddAccessories={handleAddAccessories}
             deviceDatabase={deviceDatabase}
             servicePlans={servicePlans}
+            engine={engine}
           />
         ))}
         <div className="grid grid-cols-2 gap-3">

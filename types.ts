@@ -1,3 +1,4 @@
+
 import { User } from 'firebase/auth';
 
 // types.ts
@@ -81,6 +82,8 @@ export enum DeviceCategory {
     TABLET = 'Tablet',
     TRACKER = 'Tracker',
 }
+
+export type StockStatus = 'in_stock' | 'low_stock' | 'backorder';
 
 export interface InsurancePlan {
   id: string;
@@ -325,6 +328,7 @@ export interface DeviceModel {
     defaultTermMonths: number;
     tags: string[];
     whatsInTheBox?: string[];
+    stockStatus?: StockStatus; // NEW: Inventory status
 }
 
 export interface DeviceDatabase {
@@ -371,8 +375,6 @@ export interface CalculatedTotals {
     requiredDownPaymentInCents: number;
     dueTodayInCents: number;
     financedAccessories: (Accessory & { monthlyPaymentInCents: number })[];
-    paidInFullAccessories: Accessory[];
-    totalDeviceCostInCents: number;
     amountToFinanceBeforeLimitInCents: number;
     financedByDevicesInCents: number;
     financedByAccessoriesInCents: number;
@@ -381,80 +383,60 @@ export interface CalculatedTotals {
     appliedPromotions: AppliedPromotion[];
 }
 
-
-// For saved leads
-export enum LeadStatus {
-  NEW = 'New',
-  CONTACTED = 'Contacted',
-  FOLLOW_UP = 'Follow-up',
-  CLOSED_WON = 'Closed - Won',
-  CLOSED_LOST = 'Closed - Lost',
-}
-
-export interface QuoteVersion {
-  // The full QuoteConfig object at a point in time. Note that 'notes' are now at the lead level.
-  quoteConfig: Omit<QuoteConfig, 'notes'>;
-  versionCreatedAt: number;
-  calculatedTotals: CalculatedTotals | null;
+export interface SavedView {
+    id: string;
+    name: string;
+    filters: {
+        status?: string;
+        assignedTo?: string;
+        tags?: string[];
+    };
+    sort: {
+        field: string;
+        direction: 'asc' | 'desc';
+    };
 }
 
 export interface SavedLead {
-  id: string;
-  customerName: string; // For display and search
-  customerPhone: string; // For display and search
-  notes: string; // Lead-level notes, separate from quote versions
-  createdAt: number;
-  updatedAt: number;
-  status: LeadStatus;
-  followUpAt?: number;
-  activityLog: ActivityLogEntry[];
-  tags?: string[];
-  versions: QuoteVersion[];
-  storeId: string;
-  assignedToUid: string;
-  // Salesforce Integration
-  salesforceId?: string;
-  lastSyncedAt?: number;
-}
-
-export interface SavedView {
-  id: string;
-  name: string;
-  filters: {
-    searchTerm?: string;
-    statusFilter?: LeadStatus | 'all';
+    id: string;
+    customerName: string;
+    customerPhone: string;
+    status: LeadStatus;
+    notes: string;
+    createdAt: number;
+    updatedAt: number;
+    followUpAt?: number;
+    assignedToUid?: string;
+    storeId: string;
+    versions?: QuoteVersion[];
+    activityLog?: ActivityLogEntry[];
     tags?: string[];
-    dateRange?: { start: number | null; end: number | null };
-    followUpRange?: { start: number | null; end: number | null };
-  };
+    salesforceId?: string;
+    lastSyncedAt?: number;
 }
 
-// Upgrade Calculator Specific Types
-export enum DeviceCondition {
-    GOOD = 'Good',
-    CRACKED = 'Cracked Screen',
-    DAMAGED = 'Other Damage'
+export interface QuoteVersion {
+    versionCreatedAt: number;
+    quoteConfig: QuoteConfig;
+    calculatedTotals: CalculatedTotals | null;
 }
 
-export interface UpgradeConfig {
-    currentDevicePrice: number;
-    remainingBalance: number;
-    deviceCondition: DeviceCondition;
-    hasP360: boolean;
-    newDevicePrice: number;
-    wantsToAddLine: boolean;
-    wantsToChangePlan: boolean;
-    wantsToAddBts: boolean;
-}
-
-export interface UpgradeProgram {
-    name: string;
-    howItWorks: string;
-    whoIsEligible: string;
+export enum LeadStatus {
+    NEW = 'New',
+    CONTACTED = 'Contacted',
+    FOLLOW_UP = 'Follow-up',
+    CLOSED_WON = 'Closed - Won',
+    CLOSED_LOST = 'Closed - Lost',
 }
 
 export interface TMobileUpgradeData {
     upgradePrograms: UpgradeProgram[];
     tradeInRequirements: string[];
     creditApplicationInfo: string[];
+}
+
+export interface UpgradeProgram {
+    name: string;
+    howItWorks: string;
+    whoIsEligible: string;
 }
