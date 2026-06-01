@@ -1,4 +1,5 @@
-import { QuoteConfig, Promotion, DeviceDatabase, ServicePlan, PromotionConditionField, PromotionConditionOperator, PromotionCategory, DeviceCategory } from '../types';
+
+import { QuoteConfig, Promotion, DeviceDatabase, ServicePlan, PromotionConditionField, PromotionConditionOperator, PromotionCategory, DeviceCategory, BundleConfig, AccessoryPaymentType, StackingGroup } from '../types';
 
 export const applyPromoToConfig = (
     currentConfig: QuoteConfig,
@@ -8,29 +9,24 @@ export const applyPromoToConfig = (
 ): QuoteConfig => {
     const newConfig = { ...currentConfig };
 
-    // 1. Handle Customer Type and Plan adjustments
+    // 1. Handle Conditions (Auto-fix plan/type)
+    // Only applies to simple top-level conditions for auto-fix
     (promo.conditions || []).forEach(cond => {
-        // Adjust Customer Type
-        if (cond.field === PromotionConditionField.CUSTOMER_TYPE && cond.operator === PromotionConditionOperator.EQUALS) {
-            newConfig.customerType = cond.value;
-        }
-        
-        // Adjust Plan
-        if (cond.field === PromotionConditionField.PLAN && cond.operator === PromotionConditionOperator.INCLUDES) {
-            const eligiblePlans = String(cond.value).split(',').map(s => s.trim());
-            // Only change if current plan is not eligible
-            if (!eligiblePlans.includes(newConfig.plan)) {
-                newConfig.plan = eligiblePlans[0] || newConfig.plan;
+        if (!cond.logic) {
+            if (cond.field === PromotionConditionField.CUSTOMER_TYPE && cond.operator === PromotionConditionOperator.EQUALS) {
+                newConfig.customerType = cond.value;
+            }
+            if (cond.field === PromotionConditionField.PLAN && cond.operator === PromotionConditionOperator.INCLUDES) {
+                const eligiblePlans = String(cond.value).split(',').map(s => s.trim());
+                if (!eligiblePlans.includes(newConfig.plan)) {
+                    newConfig.plan = eligiblePlans[0] || newConfig.plan;
+                }
             }
         }
     });
 
     // 2. Handle Device Promos (Add placeholder if needed)
     if (promo.category === PromotionCategory.DEVICE) {
-        // Determine if we should add a device. 
-        // If the user triggered this, they likely want the device involved.
-        
-        // Identify a compatible device model ID based on tags or IDs
         let compatibleModelId: string | undefined;
         if (promo.eligibleDeviceTags && promo.eligibleDeviceTags.length > 0) {
             const matchingModel = deviceDatabase.devices.find(d => 
@@ -42,10 +38,9 @@ export const applyPromoToConfig = (
             compatibleModelId = promo.eligibleDeviceIds[0];
         }
 
-        // Create the new device object
         const newDevice = {
             id: crypto.randomUUID(),
-            category: DeviceCategory.PHONE, // Default, updated below if model found
+            category: DeviceCategory.PHONE,
             modelId: '',
             variantSku: '', 
             price: 0, 
@@ -64,16 +59,12 @@ export const applyPromoToConfig = (
                 newDevice.term = model.defaultTermMonths;
             }
         }
-
-        // Add to config
         newConfig.devices = [...newConfig.devices, newDevice];
     }
 
-    // 3. Handle BTS Promos (Add Service Plan placeholder)
+    // 3. Handle BTS Promos
     if (promo.category === PromotionCategory.BTS) {
-         // Default to adding a watch if unspecified, or infer from service plans if we had better mapping
          const defaultCategory = DeviceCategory.WATCH; 
-         
          newConfig.devices = [
               ...newConfig.devices,
               {
@@ -86,11 +77,73 @@ export const applyPromoToConfig = (
                   downPayment: 0,
                   tradeIn: 0,
                   tradeInType: 'manual',
-                  appliedPromoId: null, // BTS promos usually apply to the plan, not the device trade-in field directly in this model, but context depends
+                  appliedPromoId: null,
                   servicePlanId: servicePlans.find(sp => sp.deviceCategory === defaultCategory)?.id
               }
           ];
     }
 
+    // 4. Handle Bundles (Add Missing Items)
+    if (promo.bundleConfig) {
+        promo.bundleConfig.items.forEach(item => {
+            if (item.category === 'accessory') {
+                const existingCount = newConfig.accessories.filter(a => a.name.toLowerCase().includes(item.idPattern)).length;
+                if (existingCount < item.quantity) {
+                    newConfig.accessories.push({
+                        id: crypto.randomUUID(),
+                        name: item.idPattern === 'screen' ? 'Screen Protector' : 'Protective Case',
+                        price: item.idPattern === 'screen' ? 40 : 50,
+                        paymentType: AccessoryPaymentType.FINANCED,
+                        quantity: item.quantity - existingCount,
+                        term: 12,
+                        downPayment: 0
+                    });
+                }
+            }
+            if (item.category === 'insurance') {
+                // Ensure all devices have insurance
+                newConfig.devices = newConfig.devices.map(d => {
+                    if (!d.insuranceId) return { ...d, insuranceId: 'p360' }; // Default to P360
+                    return d;
+                });
+            }
+        });
+    }
+
     return newConfig;
+};
+
+// Check for Conflict Matrix
+export const checkPromoConflicts = (activePromos: Promotion[]): { conflict: boolean; reasons: string[] } => {
+    const reasons: string[] = [];
+    let conflict = false;
+
+    // 1. Explicit Exclusions
+    activePromos.forEach(p1 => {
+        if (p1.excludedPromoIds) {
+            activePromos.forEach(p2 => {
+                if (p1.id !== p2.id && p1.excludedPromoIds?.includes(p2.id)) {
+                    conflict = true;
+                    reasons.push(`${p1.name} excludes ${p2.name}`);
+                }
+            });
+        }
+    });
+
+    // 2. Stacking Group Violations
+    const groups: Record<string, number> = {};
+    activePromos.forEach(p => {
+        if (p.stackingGroup !== StackingGroup.OPEN) {
+            groups[p.stackingGroup] = (groups[p.stackingGroup] || 0) + 1;
+        }
+    });
+
+    Object.entries(groups).forEach(([group, count]) => {
+        if (count > 1) {
+            conflict = true;
+            reasons.push(`Multiple promotions in exclusive group: ${group}`);
+        }
+    });
+
+    return { conflict, reasons };
 };

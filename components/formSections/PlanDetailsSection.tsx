@@ -1,10 +1,11 @@
+
 import React, { useState, useMemo } from 'react';
 import { QuoteConfig, CustomerType, Promotion, PromotionCategory } from '../../types';
 import { useData } from '../../context/AppContext';
 import Section from '../ui/Section';
-import Input from '../ui/Input';
 import Select from '../ui/Select';
 import Toggle from '../ui/Toggle';
+import Input from '../ui/Input';
 import Button from '../ui/Button';
 import { analyzePromotion } from '../../utils/conditionUtils';
 import Modal from '../ui/Modal';
@@ -21,13 +22,13 @@ const getPromoIcon = (category: PromotionCategory) => {
             <svg xmlns="http://www.w3.org/2000/svg" className="w-full h-full" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="7"></circle><polyline points="12 9 12 12 13.5 13.5"></polyline><path d="M16.51 17.35l-.35 3.83a2 2 0 0 1-2 1.82H9.83a2 2 0 0 1-2-1.82l-.35-3.83m.01-10.7l.35-3.83A2 2 0 0 1 9.83 1h4.35a2 2 0 0 1 2 1.82l.35 3.83"></path></svg>
         );
         case PromotionCategory.PLAN: return (
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-full h-full" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-full h-full" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a10 10 0 1 0 10 10 10 10 0 0 0-10-10z"></path><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
         );
         case PromotionCategory.ACCOUNT: return (
             <svg xmlns="http://www.w3.org/2000/svg" className="w-full h-full" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
         );
         default: return (
-            <svg xmlns="http://www.w3.org/2000/svg" className="w-full h-full" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-full h-full" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="16"></line><line x1="8" y1="12" x2="16" y2="12"></line></svg>
         );
     }
 };
@@ -114,6 +115,7 @@ const PlanDetailsSection: React.FC<PlanDetailsSectionProps> = ({ config, setConf
   const { planPricing, promotions, deviceDatabase, servicePlans } = useData();
   const planDetails = planPricing.find(p => p.id === config.plan);
   const [selectedPromo, setSelectedPromo] = useState<Promotion | null>(null);
+  const [isPromosExpanded, setIsPromosExpanded] = useState(false); // Default to collapsed
 
   const displayedPromotions = useMemo(() => {
     return promotions
@@ -171,7 +173,7 @@ const PlanDetailsSection: React.FC<PlanDetailsSectionProps> = ({ config, setConf
   const availablePlans = planPricing.filter(plan => plan.availableFor.includes(config.customerType)).map(plan => ({ value: plan.id, label: plan.name }));
 
   return (
-    <Section title="Plan Details" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>}>
+    <Section title="Plan Details" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z" /></svg>}>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
         <Select label="Plan Type" name="plan" value={config.plan} onChange={handleValueChange} options={availablePlans} />
         <div>
@@ -186,17 +188,38 @@ const PlanDetailsSection: React.FC<PlanDetailsSectionProps> = ({ config, setConf
 
        {displayedPromotions.length > 0 && (
         <div className="mt-6 pt-6 border-t border-border/50">
-          <h4 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider">Promotion Highlights</h4>
-          <div className="flex flex-col gap-2">
-            {displayedPromotions.map(({ promo, status, reasons }) => (
-              <PromoListItem 
-                key={promo.id} 
-                promo={promo} 
-                status={status} 
-                failureReasons={reasons} 
-                onClick={() => setSelectedPromo(promo)} 
-              />
-            ))}
+          <button 
+            type="button"
+            onClick={() => setIsPromosExpanded(!isPromosExpanded)}
+            className="w-full flex items-center justify-between group cursor-pointer focus:outline-none mb-2"
+          >
+             <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider group-hover:text-foreground transition-colors">Promotion Highlights</h4>
+             <div className="p-1 rounded-full hover:bg-muted transition-colors">
+                <svg 
+                    xmlns="http://www.w3.org/2000/svg" 
+                    className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${isPromosExpanded ? 'rotate-180' : ''}`} 
+                    fill="none" 
+                    viewBox="0 0 24 24" 
+                    stroke="currentColor" 
+                    strokeWidth={2}
+                >
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+             </div>
+          </button>
+          
+          <div className={`overflow-hidden transition-all duration-300 ease-in-out ${isPromosExpanded ? 'max-h-[1000px] opacity-100' : 'max-h-0 opacity-0'}`}>
+            <div className="flex flex-col gap-2 pt-1">
+                {displayedPromotions.map(({ promo, status, reasons }) => (
+                <PromoListItem 
+                    key={promo.id} 
+                    promo={promo} 
+                    status={status} 
+                    failureReasons={reasons} 
+                    onClick={() => setSelectedPromo(promo)} 
+                />
+                ))}
+            </div>
           </div>
         </div>
       )}

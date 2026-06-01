@@ -83,8 +83,6 @@ export enum DeviceCategory {
     TRACKER = 'Tracker',
 }
 
-export type StockStatus = 'in_stock' | 'low_stock' | 'backorder';
-
 export interface InsurancePlan {
   id: string;
   name: string;
@@ -124,6 +122,7 @@ export interface Device {
   activationFee?: boolean; // For non-phone device activations
   insuranceId?: string; // NEW: Specific insurance plan for this device
   isByod?: boolean; // NEW: Bring Your Own Device flag
+  competitorOwedAmount?: number; // NEW: Amount owed on device at previous carrier
 }
 
 export enum AccessoryPaymentType {
@@ -181,6 +180,9 @@ export enum PromotionConditionField {
     PLAN = 'plan',
     LINES = 'lines',
     DEVICE_COUNT = 'deviceCount',
+    ACCESSORY_COUNT = 'accessories.length',
+    HAS_INSURANCE = 'hasInsurance',
+    OWES_COMPETITOR = 'owesCompetitor' // New field
 }
 
 export enum PromotionConditionOperator {
@@ -197,6 +199,8 @@ export enum PromotionCategory {
     BTS = 'BTS',
     ACCESSORY = 'Accessory',
     ACCOUNT = 'Account',
+    BUNDLE = 'Bundle',
+    REIMBURSEMENT = 'Reimbursement' // New Category for Keep & Switch
 }
 
 export enum PromotionEffectType {
@@ -208,13 +212,18 @@ export enum PromotionEffectType {
     FREE_DEVICE = 'free_device',
     FREE_LINE = 'free_line',
     ACCESSORY_DISCOUNT_FIXED = 'accessory_discount_fixed',
+    BUNDLE_PRICE_FIXED = 'bundle_price_fixed',
+    REIMBURSEMENT_FIXED = 'reimbursement_fixed' // New Effect
 }
 
+// Enhanced Condition Interface for Recursive Logic
 export interface PromotionCondition {
     id: string;
-    field: PromotionConditionField;
-    operator: PromotionConditionOperator;
-    value: any;
+    logic?: 'AND' | 'OR'; // If present, this is a group
+    subConditions?: PromotionCondition[]; // Children for the group
+    field?: PromotionConditionField; // Leaf node property
+    operator?: PromotionConditionOperator; // Leaf node property
+    value?: any; // Leaf node property
 }
 
 export interface PromotionEffect {
@@ -223,6 +232,7 @@ export interface PromotionEffect {
     value: number;
     durationMonths?: number;
     appliesToQuantity?: number;
+    maxValue?: number; // New: For Reimbursements (e.g., up to $800)
 }
 
 export enum TradeInRequirement {
@@ -251,6 +261,16 @@ export interface BogoConfig {
     discountTarget: 'lowest_price' | 'fixed'; // Usually lowest price gets credit
 }
 
+// NEW: Smart Bundles Configuration
+export interface BundleConfig {
+    items: {
+        category: 'accessory' | 'insurance' | 'plan_feature';
+        idPattern: string; // 'case', 'screen', 'p360', or specific ID
+        quantity: number;
+    }[];
+    autoAdd?: boolean; // If true, applying promo adds these items
+}
+
 export interface Promotion {
     id: string;
     name: string;
@@ -259,12 +279,17 @@ export interface Promotion {
     isActive: boolean;
     spotlightOnHome?: boolean;
     stackingGroup: StackingGroup; 
+    priority: number; // Higher number wins conflicts
+    excludedPromoIds?: string[]; // IDs of promos this cannot combine with
     bogoConfig?: BogoConfig; // NEW: BOGO Logic
+    bundleConfig?: BundleConfig; // NEW: Bundle Logic
     conditions: PromotionCondition[];
     deviceRequirements?: DevicePromoRequirements;
     eligibleDeviceIds?: string[];
     eligibleDeviceTags?: string[];
     effects: PromotionEffect[];
+    spiff?: number; // Sales incentive in dollars
+    expirationDate?: number; // Unix timestamp for expiration
 }
 
 export enum GuidancePlacement {
@@ -328,7 +353,6 @@ export interface DeviceModel {
     defaultTermMonths: number;
     tags: string[];
     whatsInTheBox?: string[];
-    stockStatus?: StockStatus; // NEW: Inventory status
 }
 
 export interface DeviceDatabase {
@@ -340,6 +364,7 @@ export interface DeviceDatabase {
 export interface AppliedPromotion extends Promotion {
     discountInCents: number;
     monthlyCreditInCents?: number;
+    reimbursementAmountInCents?: number; // NEW
 }
 
 export interface CalculatedTotals {
@@ -375,68 +400,91 @@ export interface CalculatedTotals {
     requiredDownPaymentInCents: number;
     dueTodayInCents: number;
     financedAccessories: (Accessory & { monthlyPaymentInCents: number })[];
+    paidInFullAccessories: Accessory[];
+    totalDeviceCostInCents: number;
     amountToFinanceBeforeLimitInCents: number;
     financedByDevicesInCents: number;
     financedByAccessoriesInCents: number;
     totalLinesForEC: number;
     availableFinancingLimitInCents: number;
     appliedPromotions: AppliedPromotion[];
+    totalReimbursementInCents: number; // NEW: Virtual Card Total
 }
 
-export interface SavedView {
-    id: string;
-    name: string;
-    filters: {
-        status?: string;
-        assignedTo?: string;
-        tags?: string[];
-    };
-    sort: {
-        field: string;
-        direction: 'asc' | 'desc';
-    };
-}
 
-export interface SavedLead {
-    id: string;
-    customerName: string;
-    customerPhone: string;
-    status: LeadStatus;
-    notes: string;
-    createdAt: number;
-    updatedAt: number;
-    followUpAt?: number;
-    assignedToUid?: string;
-    storeId: string;
-    versions?: QuoteVersion[];
-    activityLog?: ActivityLogEntry[];
-    tags?: string[];
-    salesforceId?: string;
-    lastSyncedAt?: number;
+// For saved leads
+export enum LeadStatus {
+  NEW = 'New',
+  CONTACTED = 'Contacted',
+  FOLLOW_UP = 'Follow-up',
+  CLOSED_WON = 'Closed - Won',
+  CLOSED_LOST = 'Closed - Lost',
 }
 
 export interface QuoteVersion {
-    versionCreatedAt: number;
-    quoteConfig: QuoteConfig;
-    calculatedTotals: CalculatedTotals | null;
+  // The full QuoteConfig object at a point in time. Note that 'notes' are now at the lead level.
+  quoteConfig: Omit<QuoteConfig, 'notes'>;
+  versionCreatedAt: number;
+  calculatedTotals: CalculatedTotals | null;
 }
 
-export enum LeadStatus {
-    NEW = 'New',
-    CONTACTED = 'Contacted',
-    FOLLOW_UP = 'Follow-up',
-    CLOSED_WON = 'Closed - Won',
-    CLOSED_LOST = 'Closed - Lost',
+export interface SavedLead {
+  id: string;
+  customerName: string; // For display and search
+  customerPhone: string; // For display and search
+  notes: string; // Lead-level notes, separate from quote versions
+  createdAt: number;
+  updatedAt: number;
+  status: LeadStatus;
+  followUpAt?: number;
+  activityLog: ActivityLogEntry[];
+  tags?: string[];
+  versions: QuoteVersion[];
+  storeId: string;
+  assignedToUid: string;
+  // Salesforce Integration
+  salesforceId?: string;
+  lastSyncedAt?: number;
 }
 
-export interface TMobileUpgradeData {
-    upgradePrograms: UpgradeProgram[];
-    tradeInRequirements: string[];
-    creditApplicationInfo: string[];
+export interface SavedView {
+  id: string;
+  name: string;
+  filters: {
+    searchTerm?: string;
+    statusFilter?: LeadStatus | 'all';
+    tags?: string[];
+    dateRange?: { start: number | null; end: number | null };
+    followUpRange?: { start: number | null; end: number | null };
+  };
+}
+
+// Upgrade Calculator Specific Types
+export enum DeviceCondition {
+    GOOD = 'Good',
+    CRACKED = 'Cracked Screen',
+    DAMAGED = 'Other Damage'
+}
+
+export interface UpgradeConfig {
+    currentDevicePrice: number;
+    remainingBalance: number;
+    deviceCondition: DeviceCondition;
+    hasP360: boolean;
+    newDevicePrice: number;
+    wantsToAddLine: boolean;
+    wantsToChangePlan: boolean;
+    wantsToAddBts: boolean;
 }
 
 export interface UpgradeProgram {
     name: string;
     howItWorks: string;
     whoIsEligible: string;
+}
+
+export interface TMobileUpgradeData {
+    upgradePrograms: UpgradeProgram[];
+    tradeInRequirements: string[];
+    creditApplicationInfo: string[];
 }

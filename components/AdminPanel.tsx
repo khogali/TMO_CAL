@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect, useRef } from 'react';
 import { PlanDetails, InsurancePlan, Promotion, GuidanceItem, CustomerType, PricingModel, PromotionConditionField, PromotionConditionOperator, PromotionEffectType, PromotionCondition, PromotionEffect, GuidancePlacement, GuidanceStyle, GuidanceConditionField, UserProfile, Store, UserRole, GuidanceCondition, TMobileUpgradeData, UpgradeProgram, DeviceModel, DeviceVariant, PromotionCategory, TradeInRequirement, ServicePlan, DeviceCategory, StackingGroup } from '../types';
 import { useData, useUI } from '../context/AppContext';
+import { saveAllAdminSettings } from '../services/firebaseApi';
 import Input from './ui/Input';
 import Select from './ui/Select';
 import Toggle from './ui/Toggle';
@@ -9,7 +11,7 @@ import Modal from './ui/Modal';
 
 type Tab = 'plans' | 'servicePlans' | 'insurance' | 'discounts' | 'promotions' | 'guidance' | 'devices' | 'users' | 'stores' | 'upgrade';
 
-// ManageStoresModal sub-component (now using the Modal component)
+// ManageStoresModal sub-component
 const ManageStoresModal: React.FC<{ isOpen: boolean; onClose: () => void; user: UserProfile; allStores: Store[]; onSave: (managedStoreIds: string[]) => void; }> = ({ isOpen, onClose, user, allStores, onSave }) => {
     const [selectedStores, setSelectedStores] = useState<string[]>(user.managedStoreIds || []);
     const handleToggleStore = (storeId: string) => setSelectedStores(prev => prev.includes(storeId) ? prev.filter(id => id !== storeId) : [...prev, storeId]);
@@ -37,13 +39,18 @@ const ManageStoresModal: React.FC<{ isOpen: boolean; onClose: () => void; user: 
 const AdminPanel: React.FC = () => {
   const {
     planPricing, servicePlans, discountSettings, insurancePlans, promotions, guidanceItems,
-    deviceDatabase, allUsers, allStores, upgradeData, handleAdminSave, handleAdminReset
+    deviceDatabase, allUsers, allStores, upgradeData, handleAdminReset
   } = useData();
   const { setIsAdminPanelOpen } = useUI();
 
   const [activeTab, setActiveTab] = useState<Tab>('plans');
   const [isStoreManagerModalOpen, setIsStoreManagerModalOpen] = useState(false);
   const [editingUserIndex, setEditingUserIndex] = useState<number | null>(null);
+  
+  // Auto-save state
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const isFirstRender = useRef(true);
 
   const [settings, setSettings] = useState(() => ({
     plans: JSON.parse(JSON.stringify(planPricing)),
@@ -60,13 +67,35 @@ const AdminPanel: React.FC = () => {
   
   const onClose = () => setIsAdminPanelOpen(false);
 
-  // ... (keeping existing handler functions exactly as they were for brevity, assume they are preserved)
-  // Re-implementing them here just to be safe and complete since I'm replacing the file content.
-  
-  const handleSave = () => {
-    const processedSettings = { ...settings, plans: settings.plans.map((plan: any) => ({ ...plan, tieredPrices: plan.pricingModel === PricingModel.TIERED ? String(plan.tieredPrices).split(',').map(Number).filter(n => !isNaN(n)) : [] })) };
-    handleAdminSave(processedSettings);
-  };
+  // Auto-Save Effect
+  useEffect(() => {
+      if (isFirstRender.current) {
+          isFirstRender.current = false;
+          return;
+      }
+
+      const timer = setTimeout(async () => {
+          setIsSaving(true);
+          try {
+             const processedSettings = { 
+                 ...settings, 
+                 plans: settings.plans.map((plan: any) => ({ 
+                     ...plan, 
+                     tieredPrices: plan.pricingModel === PricingModel.TIERED ? String(plan.tieredPrices).split(',').map(Number).filter((n: number) => !isNaN(n)) : [] 
+                 })) 
+             };
+             
+             await saveAllAdminSettings(processedSettings, allStores, allUsers);
+             setLastSaved(new Date());
+          } catch(e) {
+             console.error("Auto-save failed", e);
+          } finally {
+             setIsSaving(false);
+          }
+      }, 800); // 800ms debounce
+
+      return () => clearTimeout(timer);
+  }, [settings, allStores, allUsers]);
   
   const handleValueChange = (section: keyof typeof settings | 'deviceDatabase.devices', index: number, field: string, value: any) => {
     setSettings(prev => {
@@ -277,7 +306,11 @@ const AdminPanel: React.FC = () => {
   return (
     <Modal isOpen={true} onClose={onClose} className="max-w-5xl bg-card rounded-3xl border border-border h-[90vh]">
       <div className="p-4 sm:p-5 border-b border-border flex justify-between items-center flex-shrink-0">
-        <h2 className="text-lg font-bold text-foreground">Admin Panel</h2>
+        <div className="flex items-center gap-4">
+            <h2 className="text-lg font-bold text-foreground">Admin Panel</h2>
+            {isSaving && <span className="text-xs font-bold text-primary animate-pulse">Saving changes...</span>}
+            {!isSaving && lastSaved && <span className="text-xs text-muted-foreground">All changes saved</span>}
+        </div>
         <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg></button>
       </div>
       <div className="flex-grow flex overflow-hidden">
@@ -294,8 +327,7 @@ const AdminPanel: React.FC = () => {
       <div className="p-4 bg-card border-t border-border flex justify-between items-center flex-shrink-0">
           <button onClick={handleAdminReset} className="px-4 py-2 rounded-lg text-sm font-semibold text-red-500 bg-red-500/10 hover:bg-red-500/20">Reset to Defaults</button>
           <div className="flex items-center gap-3">
-               <button onClick={onClose} className="px-6 py-2.5 rounded-lg text-sm font-semibold bg-muted hover:bg-border">Cancel</button>
-               <button onClick={handleSave} className="px-6 py-2.5 rounded-lg text-sm font-semibold bg-primary text-white hover:bg-pink-700">Save Settings</button>
+               <button onClick={onClose} className="px-6 py-2.5 rounded-lg text-sm font-semibold bg-muted hover:bg-border">Close</button>
           </div>
       </div>
     </Modal>

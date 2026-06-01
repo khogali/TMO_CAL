@@ -1,5 +1,4 @@
 
-/* ... existing imports ... */
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, ReactNode } from 'react';
 import { User } from 'firebase/auth';
 import { ref, push, set } from 'firebase/database';
@@ -12,7 +11,7 @@ import { INITIAL_PLANS, INITIAL_INSURANCE_PLANS, INITIAL_PROMOTIONS, INITIAL_GUI
 import { calculateQuoteTotals } from '../utils/calculations';
 import { QuoteConfigSchema } from '../utils/validation';
 
-type View = 'home' | 'new-quote' | 'leads' | 'profile' | 'promotions' | 'wizard';
+type View = 'home' | 'new-quote' | 'leads' | 'profile' | 'promotions' | 'wizard' | 'plans';
 
 // --- CONTEXT TYPE DEFINITIONS ---
 interface AuthContextType {
@@ -51,8 +50,10 @@ interface DataContextType {
     upgradeData: TMobileUpgradeData;
     deviceDatabase: DeviceDatabase;
     leadToLoad: SavedLead | null;
+    leadToView: string | null; // NEW: For deep linking to Leads Portal
     promoToApply: string | null;
     wizardConfig: QuoteConfig | null; 
+    sessionQuote: QuoteConfig | null; // NEW: Active session tracking
     visibleLeads: SavedLead[];
     handleSaveOrUpdateLead: (config: QuoteConfig, options?: { silent?: boolean }) => Promise<string | void>;
     handleUpdateLead: (leadId: string, updates: Partial<Pick<SavedLead, 'status' | 'notes' | 'followUpAt' | 'tags' | 'assignedToUid'>>) => void;
@@ -65,11 +66,13 @@ interface DataContextType {
     handleAdminSave: (newSettings: any) => void;
     handleAdminReset: () => void;
     deleteLead: (leadId: string) => Promise<void>;
-    setLeadToLoad: (lead: SavedLead | null) => void;
+    setLeadToLoad: (config: SavedLead | null) => void;
+    setLeadToView: (leadId: string | null) => void; // NEW
     handleUsePromo: (promoId: string) => void;
     clearPromoToApply: () => void;
     applyWizardConfig: (config: QuoteConfig) => void; 
     clearWizardConfig: () => void; 
+    setSessionQuote: (config: QuoteConfig | null) => void; // NEW
 }
 
 interface UIContextType {
@@ -77,13 +80,11 @@ interface UIContextType {
     isDarkMode: boolean;
     isPasswordModalOpen: boolean;
     isAdminPanelOpen: boolean;
-    isWizardMode: boolean; // NEW: Controls navigation visibility
     toastMessage: string | null;
     setView: (view: View) => void;
     setIsDarkMode: (isDark: boolean) => void;
     setIsPasswordModalOpen: (isOpen: boolean) => void;
     setIsAdminPanelOpen: (isOpen: boolean) => void;
-    setIsWizardMode: (isWizard: boolean) => void; // NEW
     setToastMessage: (message: string | null) => void;
 }
 
@@ -101,11 +102,9 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
     const [isDarkMode, setIsDarkMode] = useState(false);
     const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
     const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
-    const [isWizardMode, setIsWizardMode] = useState(false); // NEW
     const [toastMessage, setToastMessage] = useState<string | null>(null);
 
     // --- AUTH STATE ---
-    /* ... existing auth state ... */
     const [user, setUser] = useState<User | null>(null);
     const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
     const [isAdmin, setIsAdmin] = useState(false);
@@ -118,7 +117,6 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
     const [authLoading, setAuthLoading] = useState(false);
     
     // --- DATA STATE ---
-    /* ... existing data state ... */
     const [allLeads, setAllLeads] = useState<SavedLead[]>([]);
     const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
     const [allStores, setAllStores] = useState<Store[]>([]);
@@ -133,11 +131,12 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
     const [upgradeData, setUpgradeData] = useState<TMobileUpgradeData>(INITIAL_UPGRADE_DATA);
     const [deviceDatabase, setDeviceDatabase] = useState<DeviceDatabase>(INITIAL_DEVICE_DATABASE);
     const [leadToLoad, setLeadToLoad] = useState<SavedLead | null>(null);
+    const [leadToView, setLeadToView] = useState<string | null>(null);
     const [promoToApply, setPromoToApply] = useState<string | null>(null);
     const [wizardConfig, setWizardConfig] = useState<QuoteConfig | null>(null);
+    const [sessionQuote, setSessionQuote] = useState<QuoteConfig | null>(null);
 
     // --- SIDE EFFECTS & LOGIC ---
-    /* ... existing side effects ... */
 
     const setIsAuthModalOpen = useCallback((isOpen: boolean) => {
         setIsAuthModalOpenState(isOpen);
@@ -159,10 +158,10 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
       return () => window.removeEventListener('show-toast', handleShowToast);
     }, []);
 
-    /* ... existing offline/firebase effects ... */
     // OFFLINE-FIRST DATA LOADING & SYNC
     useEffect(() => {
         const syncSettings = async () => {
+            // Load from local DB first for instant startup
             try {
                 if ((db as any).isOpen()) {
                     const cachedSettings = await db.settings.get('main');
@@ -181,8 +180,10 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
                 console.warn('Failed to load settings from offline DB:', error);
             }
 
+            // Subscribe to Firebase for live updates
             return firebaseApi.subscribeToSettings(async (liveData) => {
                 if (liveData) {
+                    // Update state
                     setPlanPricing(liveData.plans || INITIAL_PLANS);
                     setServicePlans(liveData.servicePlans || INITIAL_SERVICE_PLANS);
                     setDiscountSettings(liveData.discounts || { autopay: 5, insider: 20, thirdLineFree: 0 });
@@ -192,6 +193,7 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
                     setUpgradeData(liveData.upgradeData || INITIAL_UPGRADE_DATA);
                     setDeviceDatabase(liveData.deviceDatabase || INITIAL_DEVICE_DATABASE);
 
+                    // Update local cache
                     try {
                         if ((db as any).isOpen()) {
                             await db.settings.put({
@@ -221,6 +223,7 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
         if (!userProfile) return;
         
         const syncAppData = async () => {
+             // Load from local DB first
             try {
                 if ((db as any).isOpen()) {
                     setAllLeads(await db.leads.toArray());
@@ -231,6 +234,7 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
                 console.warn('Failed to load app data from offline DB:', error);
             }
 
+            // Subscribe to Firebase for live updates
             const unsubLeads = firebaseApi.subscribeToLeads(async (leads) => {
                 setAllLeads(leads);
                 try {
@@ -332,15 +336,17 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
     }, []);
 
     const handleAuth = async () => {
-        if (authLoading) return;
+        if (authLoading) return; // Prevent double submit
         setAuthLoading(true);
         setAuthError(null);
+        
         try {
             await firebaseApi.authenticateUser(authEmail, authPassword, isSignUp);
-            setIsAuthModalOpenState(false);
+            setIsAuthModalOpenState(false); // Close directly, useEffect clears fields
             setToastMessage(`Welcome back!`);
         } catch (err: any) {
             console.error("Auth Error:", err);
+            // Provide friendly error messages
             let msg = err.message;
             if (msg.includes("auth/invalid-email")) msg = "Invalid email format.";
             if (msg.includes("auth/user-not-found") || msg.includes("auth/wrong-password") || msg.includes("invalid-credential")) msg = "Invalid email or password.";
@@ -356,6 +362,7 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
         try {
             await firebaseApi.signOutUser();
             setView('home');
+            setSessionQuote(null); // Clear session on sign out
             setToastMessage('Signed out successfully.');
         } catch (e) {
             console.error(e);
@@ -381,6 +388,7 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
             return; 
         }
 
+        // --- ZOD VALIDATION ---
         try {
             QuoteConfigSchema.parse(config);
         } catch (e: any) {
@@ -411,9 +419,12 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
         } else {
             const initialLog: ActivityLogEntry = { id: crypto.randomUUID(), type: ActivityLogType.CREATED, timestamp: now, by: userProfile.uid };
             const newLead: Omit<SavedLead, 'id'> = { customerName: config.customerName, customerPhone: config.customerPhone, notes: configNotes || 'No notes added.', createdAt: now, updatedAt: now, status: LeadStatus.NEW, storeId: userProfile.storeId, assignedToUid: user.uid, activityLog: [initialLog], tags: [], versions: [{ quoteConfig, versionCreatedAt: now, calculatedTotals: totals }] };
+            
+            // Manually creating reference to get the ID immediately
             const newLeadRef = push(ref(database, 'leads'));
             await set(newLeadRef, cleanForFirebase(newLead));
             savedLeadId = newLeadRef.key as string;
+            
             if (!options?.silent) setToastMessage('Lead saved successfully!');
         }
         
@@ -465,7 +476,9 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
     const handleBulkUpdateLeads = async (leadIds: string[], updates: Partial<Pick<SavedLead, 'status'>>) => {
         if (!user || leadIds.length === 0 || !userProfile) return;
         const result = await firebaseApi.bulkUpdateLeads(leadIds, updates, allLeads, userProfile);
-        if (result.success) setToastMessage(`${leadIds.length} lead${leadIds.length > 1 ? 's' : ''} updated.`);
+        if (result.success) {
+            setToastMessage(`${leadIds.length} lead${leadIds.length > 1 ? 's' : ''} updated.`);
+        }
     };
 
     const handleBulkDeleteLeads = async (leadIds: string[]) => {
@@ -498,6 +511,7 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
         await firebaseApi.deleteLead(leadId);
     };
 
+    // --- PROMO ENGINE HANDLERS ---
     const handleUsePromo = (promoId: string) => {
         setPromoToApply(promoId);
         setView('new-quote');
@@ -505,6 +519,7 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
 
     const clearPromoToApply = () => setPromoToApply(null);
 
+    // --- WIZARD HANDLERS ---
     const applyWizardConfig = (config: QuoteConfig) => {
         setWizardConfig(config);
         setView('new-quote');
@@ -523,6 +538,7 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
         }
     }, [allLeads, userProfile]);
     
+    
     // --- MEMOIZED CONTEXT VALUES ---
 
     const authContextValue = useMemo(() => ({
@@ -539,13 +555,15 @@ export const AppProvider: React.FC<{children: ReactNode}> = ({ children }) => {
         handleDeleteView, handleBulkUpdateLeads, handleBulkDeleteLeads, handleAdminSave,
         handleAdminReset, deleteLead, setLeadToLoad, savedTemplates, handleSaveTemplate, handleDeleteTemplate,
         promoToApply, handleUsePromo, clearPromoToApply,
-        wizardConfig, applyWizardConfig, clearWizardConfig
-    }), [allLeads, allUsers, allStores, savedViews, planPricing, servicePlans, discountSettings, insurancePlans, promotions, guidanceItems, upgradeData, deviceDatabase, leadToLoad, visibleLeads, handleSaveOrUpdateLead, handleUpdateLead, handleSaveView, handleDeleteView, handleBulkUpdateLeads, handleBulkDeleteLeads, handleAdminSave, handleAdminReset, deleteLead, setLeadToLoad, savedTemplates, handleSaveTemplate, handleDeleteTemplate, promoToApply, wizardConfig]);
+        wizardConfig, applyWizardConfig, clearWizardConfig,
+        sessionQuote, setSessionQuote,
+        leadToView, setLeadToView // NEW
+    }), [allLeads, allUsers, allStores, savedViews, planPricing, servicePlans, discountSettings, insurancePlans, promotions, guidanceItems, upgradeData, deviceDatabase, leadToLoad, visibleLeads, handleSaveOrUpdateLead, handleUpdateLead, handleSaveView, handleDeleteView, handleBulkUpdateLeads, handleBulkDeleteLeads, handleAdminSave, handleAdminReset, deleteLead, setLeadToLoad, savedTemplates, handleSaveTemplate, handleDeleteTemplate, promoToApply, wizardConfig, sessionQuote, leadToView]);
 
     const uiContextValue = useMemo(() => ({
-        view, isDarkMode, isPasswordModalOpen, isAdminPanelOpen, isWizardMode, toastMessage, 
-        setView, setIsDarkMode, setIsPasswordModalOpen, setIsAdminPanelOpen, setIsWizardMode, setToastMessage
-    }), [view, isDarkMode, isPasswordModalOpen, isAdminPanelOpen, isWizardMode, toastMessage]);
+        view, isDarkMode, isPasswordModalOpen, isAdminPanelOpen, toastMessage, 
+        setView, setIsDarkMode, setIsPasswordModalOpen, setIsAdminPanelOpen, setToastMessage
+    }), [view, isDarkMode, isPasswordModalOpen, isAdminPanelOpen, toastMessage]);
 
 
     return (

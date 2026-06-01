@@ -72,7 +72,7 @@ const CustomerInfoSection: React.FC<CustomerInfoSectionProps> = ({ mode, config,
     <>
       <Section 
         title="Customer Info"
-        icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>}
+        icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 9h3.75M15 12h3.75M15 15h3.75M4.5 19.5h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5zm6-10.125a1.875 1.875 0 11-3.75 0 1.875 1.875 0 013.75 0zm1.294 6.336a6.721 6.721 0 01-1.294-1.579 6.721 6.721 0 01-1.294 1.579 2.25 2.25 0 01-1.854.912h-1.11a2.25 2.25 0 01-2.25-2.25v-2.029a2.25 2.25 0 012.25-2.25h1.11c.913 0 1.763.351 2.392.928a2.259 2.259 0 011.83.928 2.26 2.26 0 011.831-.928c.629-.577 1.479-.928 2.392-.928h1.11a2.25 2.25 0 012.25 2.25v2.03a2.25 2.25 0 01-2.25 2.25h-1.11a2.25 2.25 0 01-1.854-.913z" /></svg>}
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <Input label="Customer Name" name="customerName" value={config.customerName} onChange={handleInputChange} placeholder="John Doe" />

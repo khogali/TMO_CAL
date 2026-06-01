@@ -147,7 +147,6 @@ export const INITIAL_DEVICE_DATABASE: DeviceDatabase = {
             defaultTermMonths: 24,
             tags: ['5g', 'flagship', 'new_release', 'promo_eligible_bogo', 'apple_pro'],
             whatsInTheBox: ['iPhone 15 Pro', 'USB-C Charge Cable'],
-            stockStatus: 'in_stock',
             variants: [
                 { sku: 'APL-IP15P-128-NTL', storage: 128, color: 'Natural Titanium', price: 999 },
                 { sku: 'APL-IP15P-256-NTL', storage: 256, color: 'Natural Titanium', price: 1099 },
@@ -162,7 +161,6 @@ export const INITIAL_DEVICE_DATABASE: DeviceDatabase = {
             defaultTermMonths: 24,
             tags: ['5g', 'new_release', 'apple_base'],
             whatsInTheBox: ['iPhone 15', 'USB-C Charge Cable'],
-            stockStatus: 'low_stock',
             variants: [
                 { sku: 'APL-IP15-128-BLK', storage: 128, color: 'Black', price: 829 },
                 { sku: 'APL-IP15-256-BLK', storage: 256, color: 'Black', price: 929 },
@@ -176,7 +174,6 @@ export const INITIAL_DEVICE_DATABASE: DeviceDatabase = {
             defaultTermMonths: 24,
             tags: ['5g', 'flagship', 'new_release', 'android', 'samsung_s'],
             whatsInTheBox: ['Samsung S24 Ultra', 'S Pen', 'USB-C Cable', 'Ejection Pin'],
-            stockStatus: 'in_stock',
             variants: [
                 { sku: 'SAM-S24U-256-GRY', storage: 256, color: 'Titanium Gray', price: 1299 },
                 { sku: 'SAM-S24U-512-GRY', storage: 512, color: 'Titanium Gray', price: 1419 },
@@ -190,7 +187,6 @@ export const INITIAL_DEVICE_DATABASE: DeviceDatabase = {
             defaultTermMonths: 24,
             tags: ['wearable', 'new_release', 'apple_watch'],
             whatsInTheBox: ['Apple Watch SE', 'Watch Band', 'Magnetic Charging Cable'],
-            stockStatus: 'in_stock',
             variants: [
                 { sku: 'APL-WSE-40-MID', storage: 32, color: 'Midnight', price: 299 }
             ]
@@ -203,7 +199,6 @@ export const INITIAL_DEVICE_DATABASE: DeviceDatabase = {
             defaultTermMonths: 24,
             tags: ['tablet', 'apple_ipad'],
             whatsInTheBox: ['iPad', 'USB-C Charge Cable', 'USB-C Power Adapter'],
-            stockStatus: 'backorder',
             variants: [
                 { sku: 'APL-IP10-64-BLU', storage: 64, color: 'Blue', price: 599 }
             ]
@@ -219,6 +214,7 @@ export const INITIAL_PROMOTIONS: Promotion[] = [
     category: PromotionCategory.PLAN,
     isActive: true,
     stackingGroup: StackingGroup.PLAN_DISCOUNT,
+    priority: 10,
     conditions: [
       { id: 'c1', field: PromotionConditionField.CUSTOMER_TYPE, operator: PromotionConditionOperator.EQUALS, value: CustomerType.MILITARY_FR }
     ],
@@ -233,11 +229,38 @@ export const INITIAL_PROMOTIONS: Promotion[] = [
     category: PromotionCategory.PLAN,
     isActive: true,
     stackingGroup: StackingGroup.PLAN_DISCOUNT,
+    priority: 10,
     conditions: [
       { id: 'c1', field: PromotionConditionField.CUSTOMER_TYPE, operator: PromotionConditionOperator.EQUALS, value: CustomerType.PLUS_55 }
     ],
     effects: [
       { id: 'e1', type: PromotionEffectType.PLAN_DISCOUNT_FIXED, value: 15 }
+    ]
+  },
+  {
+    id: 'keep-and-switch',
+    name: 'Keep & Switch (Carrier Freedom)',
+    description: 'We pay off your phone up to $800 when you switch to T-Mobile and keep your device! You get a virtual prepaid card.',
+    category: PromotionCategory.REIMBURSEMENT,
+    isActive: true,
+    stackingGroup: StackingGroup.DEVICE_OFFER,
+    priority: 150,
+    spiff: 25,
+    conditions: [
+        { id: 'c1', field: PromotionConditionField.OWES_COMPETITOR, operator: PromotionConditionOperator.GREATER_THAN_OR_EQUAL, value: 1 }
+    ],
+    deviceRequirements: {
+        tradeIn: TradeInRequirement.NOT_ALLOWED,
+        portInRequired: true,
+        newLineRequired: true
+    },
+    effects: [
+        {
+            id: 'e1',
+            type: PromotionEffectType.REIMBURSEMENT_FIXED,
+            value: 0, // Calculated dynamically
+            maxValue: 800
+        }
     ]
   },
   {
@@ -248,6 +271,9 @@ export const INITIAL_PROMOTIONS: Promotion[] = [
     isActive: true,
     spotlightOnHome: true,
     stackingGroup: StackingGroup.DEVICE_OFFER,
+    priority: 100,
+    spiff: 20,
+    expirationDate: Date.now() + (5 * 24 * 60 * 60 * 1000), // Expires in 5 days
     conditions: [
       { id: 'c1', field: PromotionConditionField.PLAN, operator: PromotionConditionOperator.INCLUDES, value: 'experience-beyond,experience-beyond-military' }
     ],
@@ -256,11 +282,7 @@ export const INITIAL_PROMOTIONS: Promotion[] = [
         portInRequired: false,
         newLineRequired: true
     },
-    // Updated to use tags instead of brittle IDs
     eligibleDeviceTags: ['apple_pro'], 
-    // Fallback eligibleDeviceIds kept empty or removed as tags take precedence in new logic, 
-    // but kept here for backward compat if needed (though our new logic handles both).
-    eligibleDeviceIds: [], 
     effects: [
       { 
         id: 'e1', 
@@ -277,6 +299,8 @@ export const INITIAL_PROMOTIONS: Promotion[] = [
     category: PromotionCategory.DEVICE,
     isActive: true,
     stackingGroup: StackingGroup.DEVICE_OFFER,
+    priority: 80,
+    spiff: 15,
     conditions: [
         { id: 'c1', field: PromotionConditionField.PLAN, operator: PromotionConditionOperator.INCLUDES, value: 'experience-beyond,experience-more' }
     ],
@@ -285,7 +309,6 @@ export const INITIAL_PROMOTIONS: Promotion[] = [
         portInRequired: false,
         newLineRequired: true
     },
-    // Matches any iPhone, including Pro and Base models
     eligibleDeviceTags: ['apple_pro', 'apple_base'],
     bogoConfig: {
         buyQuantity: 2,
@@ -307,6 +330,9 @@ export const INITIAL_PROMOTIONS: Promotion[] = [
     category: PromotionCategory.DEVICE,
     isActive: true,
     stackingGroup: StackingGroup.DEVICE_OFFER,
+    priority: 20,
+    spiff: 5,
+    expirationDate: Date.now() + (2 * 24 * 60 * 60 * 1000), // Expires in 2 days
     conditions: [
       { id: 'c1', field: PromotionConditionField.PLAN, operator: PromotionConditionOperator.INCLUDES, value: 'experience-beyond,experience-more' }
     ],
@@ -324,20 +350,27 @@ export const INITIAL_PROMOTIONS: Promotion[] = [
     ]
   },
   {
-    id: 'watch-plan-5-off',
-    name: '$5 Off Watch Plan',
-    description: 'Get $5 off per month on your watch service plan for 24 months when adding a new watch.',
-    category: PromotionCategory.BTS,
+    id: 'protection-bundle-discount',
+    name: 'Device Protection Bundle',
+    description: 'Save 20% on accessories when you add Protection<360>.',
+    category: PromotionCategory.BUNDLE,
     isActive: true,
-    stackingGroup: StackingGroup.BTS_OFFER,
-    conditions: [],
+    stackingGroup: StackingGroup.OPEN,
+    priority: 50,
+    spiff: 10,
+    conditions: [
+        { id: 'c1', field: PromotionConditionField.HAS_INSURANCE, operator: PromotionConditionOperator.EQUALS, value: true }
+    ],
+    bundleConfig: {
+        items: [
+            { category: 'insurance', idPattern: 'p360', quantity: 1 },
+            { category: 'accessory', idPattern: 'case', quantity: 1 },
+            { category: 'accessory', idPattern: 'screen', quantity: 1 }
+        ],
+        autoAdd: true
+    },
     effects: [
-      { 
-        id: 'e1', 
-        type: PromotionEffectType.SERVICE_PLAN_DISCOUNT_FIXED, 
-        value: 5,
-        durationMonths: 24,
-      }
+        { id: 'e1', type: PromotionEffectType.ACCESSORY_DISCOUNT_FIXED, value: 25 }
     ]
   }
 ];

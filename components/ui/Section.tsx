@@ -1,8 +1,32 @@
-import React, { useState } from 'react';
+
+import React, { useState, createContext, useContext } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from './Card';
 
+type SectionVariant = 'default' | 'clean';
+
+const SectionContext = createContext<SectionVariant>('default');
+
+export const SectionProvider: React.FC<{ variant: SectionVariant; children: React.ReactNode }> = ({ variant, children }) => (
+  <SectionContext.Provider value={variant}>{children}</SectionContext.Provider>
+);
+
 const Section: React.FC<{ title: string; icon?: React.ReactNode; children: React.ReactNode; defaultOpen?: boolean; }> = ({ title, icon, children, defaultOpen = true }) => {
+  const variant = useContext(SectionContext);
   const [isOpen, setIsOpen] = useState(defaultOpen);
+
+  if (variant === 'clean') {
+    return (
+      <div className="mb-6 animate-fade-in-down">
+        <div className="flex items-center gap-3 mb-6 px-1">
+            {icon && <div className="p-2 bg-primary/10 rounded-xl text-primary">{icon}</div>}
+            <h3 className="text-2xl font-bold text-foreground tracking-tight">{title}</h3>
+        </div>
+        <div className="space-y-4">
+            {children}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Card>

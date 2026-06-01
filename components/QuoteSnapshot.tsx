@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+
+import React, { useState, useMemo } from 'react';
 import { QuoteConfig, CalculatedTotals, GuidancePlacement } from '../types';
 import { useAuth, useData } from '../context/AppContext';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
@@ -48,6 +49,7 @@ const QuoteSnapshot: React.FC<QuoteSnapshotProps> = ({ mode, config, totals, onS
   const [copied, setCopied] = useState(false);
   const [isMonthlyCreditsExpanded, setMonthlyCreditsExpanded] = useState(false);
   const [isDueTodayCreditsExpanded, setDueTodayCreditsExpanded] = useState(false);
+  const [showCommission, setShowCommission] = useState(false);
 
   const handleCopy = () => {
     if (!totals || !config) return;
@@ -55,6 +57,7 @@ const QuoteSnapshot: React.FC<QuoteSnapshotProps> = ({ mode, config, totals, onS
 *T-Mobile Quote Summary ${config.customerName ? `for ${config.customerName}` : ''}*
 *Est. Monthly Total: ${formatCurrency(totals.totalMonthlyInCents)}*
 *Est. Due Today: ${formatCurrency(totals.dueTodayInCents)}*
+${totals.totalReimbursementInCents > 0 ? `*Est. Reimbursement Card: ${formatCurrency(totals.totalReimbursementInCents)}*` : ''}
 ---
 *MONTHLY BREAKDOWN*
 Plan & Add-ons: ${formatCurrency(totals.basePlanPriceInCents + totals.insuranceCostInCents + totals.monthlyDevicePaymentInCents + totals.financedAccessoriesMonthlyCostInCents + totals.monthlyServicePlanCostInCents)}
@@ -85,7 +88,7 @@ ${userProfile.phoneNumber || ''}
     );
   }
 
-  const { totalMonthlyInCents, dueTodayInCents, basePlanPriceInCents, autopayDiscountInCents, insiderDiscountInCents, thirdLineFreeDiscountInCents, insuranceCostInCents, monthlyDevicePaymentInCents, financedAccessoriesMonthlyCostInCents, monthlyTradeInCreditInCents, taxesIncluded, activationFeeInCents, paidInFullAccessoriesCostInCents, dueTodayDeviceTaxInCents, dueTodayFeesTaxInCents, paidInFullAccessoriesTaxInCents, financedAccessoriesTaxInCents, lumpSumTradeInInCents, optionalDownPaymentInCents, requiredDownPaymentInCents, appliedPromotions, monthlyDevicePromoCreditInCents, instantDeviceRebateInCents, monthlyServicePlanCostInCents, monthlyServicePlanPromoCreditInCents } = totals;
+  const { totalMonthlyInCents, dueTodayInCents, basePlanPriceInCents, autopayDiscountInCents, insiderDiscountInCents, thirdLineFreeDiscountInCents, insuranceCostInCents, monthlyDevicePaymentInCents, financedAccessoriesMonthlyCostInCents, monthlyTradeInCreditInCents, taxesIncluded, activationFeeInCents, paidInFullAccessoriesCostInCents, dueTodayDeviceTaxInCents, dueTodayFeesTaxInCents, paidInFullAccessoriesTaxInCents, financedAccessoriesTaxInCents, lumpSumTradeInInCents, optionalDownPaymentInCents, requiredDownPaymentInCents, appliedPromotions, monthlyDevicePromoCreditInCents, instantDeviceRebateInCents, monthlyServicePlanCostInCents, monthlyServicePlanPromoCreditInCents, totalReimbursementInCents } = totals;
   const totalMonthlyTaxes = taxesIncluded ? 0 : totals.calculatedTaxesInCents;
   const totalDueTodayTaxes = dueTodayDeviceTaxInCents + dueTodayFeesTaxInCents + paidInFullAccessoriesTaxInCents + financedAccessoriesTaxInCents;
   const totalDownPayments = optionalDownPaymentInCents + requiredDownPaymentInCents;
@@ -98,6 +101,9 @@ ${userProfile.phoneNumber || ''}
 
   const hasMonthlyCredits = totalMonthlyCredits > 0;
   const hasDueTodayCredits = totalDueTodayCredits > 0;
+
+  // Calculate Spiffs
+  const totalSpiffs = appliedPromotions.reduce((sum, p) => sum + (p.spiff || 0), 0);
 
   return (
     <>
@@ -125,6 +131,24 @@ ${userProfile.phoneNumber || ''}
                     <p className="text-3xl lg:text-4xl font-extrabold text-foreground tracking-tight">{formatCurrency(dueTodayInCents)}</p>
                 </div>
             </div>
+
+            {/* REIMBURSEMENT BANNER */}
+            {totalReimbursementInCents > 0 && (
+                <div className="bg-gradient-to-r from-emerald-500 to-green-600 rounded-xl p-4 text-white shadow-md flex items-center justify-between animate-fade-in-down">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-white/20 p-2 rounded-lg">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" /></svg>
+                        </div>
+                        <div>
+                            <p className="text-xs font-bold text-emerald-100 uppercase tracking-wider">Carrier Freedom</p>
+                            <p className="text-lg font-bold">Get {formatCurrency(totalReimbursementInCents)} Back</p>
+                        </div>
+                    </div>
+                    <div className="text-right text-xs font-medium text-emerald-100">
+                        Virtual Card
+                    </div>
+                </div>
+            )}
             
             <div className="space-y-4">
               {/* Monthly Breakdown */}
@@ -194,6 +218,18 @@ ${userProfile.phoneNumber || ''}
                     <DetailRow isTotal label="Total Due Today" value={formatCurrency(dueTodayInCents)} />
                  </div>
               </div>
+              )}
+
+              {/* Commission Toggle (Hidden) */}
+              {totalSpiffs > 0 && (
+                  <div className="flex justify-center mt-2">
+                      <button 
+                        onClick={() => setShowCommission(!showCommission)}
+                        className="text-xs text-muted-foreground hover:text-foreground opacity-50 hover:opacity-100 transition-all"
+                      >
+                          {showCommission ? `Est. Spiff: $${totalSpiffs}` : '• • •'}
+                      </button>
+                  </div>
               )}
             </div>
         </CardContent>

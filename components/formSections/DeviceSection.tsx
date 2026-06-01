@@ -118,9 +118,9 @@ const DeviceCard: React.FC<DeviceCardProps> = ({ device, index, config, onDevice
 
   const getDeviceIcon = (category: DeviceCategory) => {
     switch (category) {
-        case DeviceCategory.WATCH: return <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
-        case DeviceCategory.TABLET: return <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>;
-        case DeviceCategory.TRACKER: return <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>;
+        case DeviceCategory.WATCH: return <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>;
+        case DeviceCategory.TABLET: return <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5h3m-6.75 2.25h10.5a2.25 2.25 0 002.25-2.25v-15a2.25 2.25 0 00-2.25-2.25H6.75A2.25 2.25 0 004.5 4.5v15a2.25 2.25 0 002.25 2.25z" /></svg>;
+        case DeviceCategory.TRACKER: return <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" /></svg>;
         case DeviceCategory.PHONE:
         default: return <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3" /></svg>;
     }
@@ -207,6 +207,41 @@ const DeviceCard: React.FC<DeviceCardProps> = ({ device, index, config, onDevice
                 )}
               </div>
               
+              {/* --- CARRIER FREEDOM / SWITCHING LOGIC --- */}
+              <div className="mt-4 pt-4 border-t border-border/50">
+                  <label className="text-sm font-medium flex items-center gap-2 cursor-pointer select-none mb-2">
+                      <input 
+                          type="checkbox" 
+                          checked={(device.competitorOwedAmount || 0) > 0} 
+                          onChange={(e) => {
+                              onDeviceChange(index, 'competitorOwedAmount', e.target.checked ? 1 : 0);
+                              // Reset trade-in if switching (usually mutually exclusive for same line in some flows, but we'll leave flexible)
+                          }} 
+                          className="rounded border-gray-300 text-primary focus:ring-primary h-4 w-4"
+                      />
+                      <span className="font-bold text-foreground">Switching from Carrier?</span>
+                      <span className="text-xs text-muted-foreground">(Owes money on device)</span>
+                  </label>
+                  
+                  {(device.competitorOwedAmount || 0) > 0 && (
+                      <div className="p-3 bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800 rounded-lg animate-fade-in-down mb-4">
+                          <Input 
+                              label="Amount owed to previous carrier" 
+                              type="number" 
+                              name="competitorOwedAmount" 
+                              value={device.competitorOwedAmount} 
+                              onChange={(e) => onDeviceChange(index, 'competitorOwedAmount', Number(e.target.value))} 
+                              prefix="$" 
+                              placeholder="0.00"
+                          />
+                          <p className="text-xs text-blue-600 dark:text-blue-400 mt-2 flex items-center gap-1">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" /></svg>
+                              Qualifies for reimbursement via virtual card.
+                          </p>
+                      </div>
+                  )}
+              </div>
+
               {!isByod && (
                   <>
                   <hr className="border-border/50" />
@@ -333,7 +368,7 @@ const DeviceSection: React.FC<DeviceSectionProps> = ({ config, setConfig }) => {
   const canAddPhone = phones.length < config.lines;
 
   return (
-    <Section title="Device Pricing" defaultOpen={false} icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg>}>
+    <Section title="Device Pricing" defaultOpen={false} icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-primary" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 18.75h3" /></svg>}>
       <div className="space-y-4">
         {config.devices.map((device, index) => (
           <DeviceCard

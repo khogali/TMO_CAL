@@ -1,6 +1,7 @@
 
-import { QuoteConfig, Promotion, DeviceDatabase, PromotionCategory, PromotionEffectType, TradeInRequirement, Device, StackingGroup } from '../types';
+import { QuoteConfig, Promotion, DeviceDatabase, PromotionCategory, PromotionEffectType, TradeInRequirement, Device, StackingGroup, PlanPricingData, ServicePlan, DiscountSettings, InsurancePlan } from '../types';
 import { checkCondition } from './conditionUtils';
+import { calculateQuoteTotals } from './calculations';
 
 export const optimizeQuote = (
     config: QuoteConfig,
@@ -44,22 +45,13 @@ export const optimizeQuote = (
             // In a "Buy 2 Get 1 Free/Discounted", usually the cheapest is free.
             eligibleDevices.sort((a, b) => a.price - b.price);
 
-            // Calculate Value of BOGO vs Manual Trade-in for the "Get" devices
-            // For each set, the first N devices (where N = discount target count, usually 1) get the promo.
-            // Actually, usually in a set of 2, 1 gets it.
-            // If buyQty is 2, and we have 2 devices. Cheapest one gets it.
-            
             for (let i = 0; i < setsCount; i++) {
                 // The "Get" device is the cheapest in this pair
                 const getDevice = eligibleDevices[i]; 
-                // The "Buy" device(s) are the others in the chunk
-                // We mark ALL as "used" so they aren't picked up by other BOGOs, 
-                // but we only apply the promo ID to the one getting the credit.
-                // Wait, typically you apply the promo code to the line receiving the credit.
                 
                 // Let's check value
                 let promoValue = 0;
-                (promo.effects || []).forEach(effect => {
+                promo.effects.forEach(effect => {
                     if (effect.type === PromotionEffectType.DEVICE_CREDIT_FIXED) promoValue += effect.value;
                     else if (effect.type === PromotionEffectType.DEVICE_INSTANT_REBATE) promoValue += effect.value;
                 });
@@ -77,23 +69,9 @@ export const optimizeQuote = (
                             };
                             changesMade++;
                         }
-                        // Mark the 'Buy' companion as "used" too so it doesn't trigger another pair
-                        // The 'Buy' companion is the next one in the sorted list (more expensive)
-                        // Actually, we just need to consume 'buyQty' devices from the pool.
-                        // Since we sorted by price, [0] is cheapest, [1] is next... 
-                        // The indices involved in this set are i*buyQty to (i+1)*buyQty - 1 ??
-                        // No, eligibleDevices is a flat list.
-                        // If buyQty=2. Set 1 is devices[0] and devices[1]. Device[0] gets credit.
                         deviceIdsUsedForBogo.add(eligibleDevices[i].id); // Cheapest
                         // Mark the other required devices as used
                         for(let k=1; k<buyQty; k++) {
-                             // The expensive ones are at the end of the array?
-                             // Sort was ascending: [Cheapest, ..., Most Expensive]
-                             // If we have 4 devices. [Cheap1, Cheap2, Exp1, Exp2].
-                             // Pair 1: Cheap1 gets credit. Exp2 pays.
-                             // Pair 2: Cheap2 gets credit. Exp1 pays.
-                             // So we should pair from ends? Or just consume?
-                             // Simple consumption: Just mark them used.
                              const companionIndex = eligibleDevices.length - 1 - i - (k-1); // Take from end
                              if (companionIndex > i) {
                                  deviceIdsUsedForBogo.add(eligibleDevices[companionIndex].id);
@@ -142,7 +120,7 @@ export const optimizeQuote = (
         // Calculate Value for each promo
         const valuedPromos = eligiblePromos.map(promo => {
             let totalValue = 0;
-            (promo.effects || []).forEach(effect => {
+            promo.effects.forEach(effect => {
                 if (effect.type === PromotionEffectType.DEVICE_CREDIT_FIXED) {
                     totalValue += effect.value;
                 } else if (effect.type === PromotionEffectType.DEVICE_INSTANT_REBATE) {
@@ -172,4 +150,64 @@ export const optimizeQuote = (
     });
 
     return { config: optimizedConfig, changesMade };
+};
+
+// --- NEW: Best Stack Solver ---
+export const solveBestStack = (
+    config: QuoteConfig,
+    promotions: Promotion[],
+    planPricing: PlanPricingData,
+    servicePlans: ServicePlan[],
+    discountSettings: DiscountSettings,
+    insurancePlans: InsurancePlan[],
+    deviceDatabase: DeviceDatabase
+): { config: QuoteConfig; savingsInCents: number; promosApplied: string[] } => {
+    
+    // 1. Calculate Baseline (Current Config)
+    const baselineTotals = calculateQuoteTotals(config, planPricing, servicePlans, discountSettings, insurancePlans, promotions, deviceDatabase);
+    const baselineCost = baselineTotals ? baselineTotals.totalMonthlyInCents : Infinity;
+
+    // 2. Optimize Devices First (Greedy approach for device promos is usually safe)
+    const { config: deviceOptimizedConfig } = optimizeQuote(config, promotions, deviceDatabase);
+    
+    // 3. Test Plan Switching
+    // Check if switching to a premium plan unlocks better device/plan promos that offset the plan cost increase
+    const potentialPlans = planPricing.filter(p => p.availableFor.includes(config.customerType) && p.id !== config.plan);
+    
+    let bestConfig = deviceOptimizedConfig;
+    let bestCost = baselineCost;
+    
+    // Calculate cost for device-optimized config on current plan first
+    const devOptTotals = calculateQuoteTotals(deviceOptimizedConfig, planPricing, servicePlans, discountSettings, insurancePlans, promotions, deviceDatabase);
+    if (devOptTotals && devOptTotals.totalMonthlyInCents < bestCost) {
+        bestCost = devOptTotals.totalMonthlyInCents;
+        bestConfig = deviceOptimizedConfig;
+    }
+
+    // Try other plans
+    for (const plan of potentialPlans) {
+        // Create temp config with new plan
+        let tempConfig = { ...deviceOptimizedConfig, plan: plan.id };
+        
+        // Re-optimize devices for this new plan (promos might unlock)
+        const { config: reOptimizedConfig } = optimizeQuote(tempConfig, promotions, deviceDatabase);
+        
+        const totals = calculateQuoteTotals(reOptimizedConfig, planPricing, servicePlans, discountSettings, insurancePlans, promotions, deviceDatabase);
+        
+        if (totals && totals.totalMonthlyInCents < bestCost) {
+            bestCost = totals.totalMonthlyInCents;
+            bestConfig = reOptimizedConfig;
+        }
+    }
+
+    const savings = Math.max(0, baselineCost - bestCost);
+    const appliedIds = bestConfig.devices
+        .map(d => d.appliedPromoId)
+        .filter((id): id is string => !!id);
+
+    return { 
+        config: bestConfig, 
+        savingsInCents: savings, 
+        promosApplied: Array.from(new Set(appliedIds)) 
+    };
 };

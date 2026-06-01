@@ -6,23 +6,27 @@ interface QuickStatsProps {
   leads: SavedLead[];
 }
 
-const StatCard: React.FC<{ icon: React.ReactNode; title: string; value: string | number; theme: string }> = ({ icon, title, value, theme }) => (
-    <div className={`relative overflow-hidden rounded-[2.5rem] border border-white/10 p-7 shadow-glass group transition-all duration-500 hover:scale-[1.02] ${theme} backdrop-blur-xl`}>
-        <div className="relative z-10 flex flex-col h-full justify-between gap-6">
+const StatCard: React.FC<{ icon: React.ReactNode; title: string; value: string | number; theme: 'blue' | 'amber' | 'green' }> = ({ icon, title, value, theme }) => {
+    const themeClasses = {
+        blue: 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-800',
+        amber: 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-100 dark:border-amber-800',
+        green: 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border-green-100 dark:border-green-800'
+    };
+
+    return (
+        <div className={`min-w-[140px] p-4 rounded-2xl border flex flex-col justify-between h-28 ${themeClasses[theme]} snap-start`}>
             <div className="flex justify-between items-start">
-                <div className="p-3.5 bg-white/20 backdrop-blur-md rounded-2xl text-white shadow-sm ring-1 ring-white/20">
+                <div className={`p-2 rounded-xl bg-white/50 dark:bg-black/20 ${theme === 'blue' ? 'text-blue-600' : theme === 'amber' ? 'text-amber-600' : 'text-green-600'}`}>
                     {icon}
                 </div>
             </div>
             <div>
-                <p className="text-4xl sm:text-5xl font-black text-white tracking-tighter leading-none mb-2 drop-shadow-md">{value}</p>
-                <p className="text-xs font-bold text-white/80 uppercase tracking-widest">{title}</p>
+                <p className="text-2xl font-black tracking-tight">{value}</p>
+                <p className="text-xs font-bold opacity-70 uppercase tracking-wide">{title}</p>
             </div>
         </div>
-        {/* Decorative background shapes */}
-        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl -translate-y-1/2 translate-x-1/3 group-hover:bg-white/20 transition-colors duration-700"></div>
-    </div>
-);
+    );
+};
 
 const QuickStats: React.FC<QuickStatsProps> = ({ leads }) => {
     const activeLeads = leads.filter(lead => lead.status !== LeadStatus.CLOSED_WON && lead.status !== LeadStatus.CLOSED_LOST);
@@ -41,24 +45,24 @@ const QuickStats: React.FC<QuickStatsProps> = ({ leads }) => {
     const closingRatio = closedLeads.length > 0 ? Math.round((wonLeads / closedLeads.length) * 100) : 0;
 
     return (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
+        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-6 px-6 snap-x">
             <StatCard 
-                icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>}
-                title="Active Pipeline"
+                icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" /></svg>}
+                title="Active"
                 value={activeLeads.length}
-                theme="bg-gradient-to-br from-blue-600/90 to-indigo-700/90"
+                theme="blue"
             />
             <StatCard 
-                icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+                icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
                 title="Due Today"
                 value={followUpsToday}
-                theme="bg-gradient-to-br from-amber-500/90 to-orange-600/90"
+                theme="amber"
             />
             <StatCard 
-                icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
+                icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M16.5 18.75h-9m9 0a3 3 0 013 3h-15a3 3 0 013-3m9 0v-3.375c0-.621-.504-1.125-1.125-1.125h-6.75a1.125 1.125 0 01-1.125-1.125v-9.375m15 13.5v3h-3v-3h3zm-9-13.5V6a1.5 1.5 0 011.5-1.5h3A1.5 1.5 0 0113.5 6v1.5m-9 0h9" /></svg>}
                 title="Win Rate"
                 value={`${closingRatio}%`}
-                theme="bg-gradient-to-br from-emerald-500/90 to-teal-600/90"
+                theme="green"
             />
         </div>
     );

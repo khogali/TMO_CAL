@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">T-Mobile Sales Center</string>
+    <string name="title_activity_main">T-Mobile Sales Center</string>
+    <string name="package_name">com.tmobile.salescenter</string>
+    <string name="custom_url_scheme">com.tmobile.salescenter</string>
+</resources>

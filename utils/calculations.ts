@@ -1,5 +1,7 @@
-import { QuoteConfig, PlanPricingData, DiscountSettings, InsurancePlan, AccessoryPaymentType, Accessory, ServicePlan, Promotion, AppliedPromotion, PromotionEffectType, PlanDetails, PricingModel, CalculatedTotals, PromotionCategory, DeviceDatabase, TradeInRequirement, DeviceCategory, StackingGroup } from '../types';
+
+import { QuoteConfig, PlanPricingData, DiscountSettings, InsurancePlan, AccessoryPaymentType, Accessory, ServicePlan, Promotion, AppliedPromotion, PromotionEffectType, PlanDetails, PricingModel, CalculatedTotals, PromotionCategory, DeviceDatabase, TradeInRequirement, DeviceCategory, StackingGroup, PromotionConditionField } from '../types';
 import { checkCondition } from './conditionUtils';
+import { InsuranceEngine } from './insuranceEngine'; // Import the new engine
 
 const toCents = (dollars: number) => Math.round(dollars * 100);
 
@@ -152,6 +154,7 @@ export const calculateQuoteTotals = (
     let monthlyDevicePromoCreditInCents = 0;
     let instantDeviceRebateInCents = 0;
     let monthlyServicePlanPromoCreditInCents = 0; // For BTS promos
+    let totalReimbursementInCents = 0; // For Keep & Switch / Carrier Freedom
     
     // 1. Plan/Account Promotions - Apply Stacking Logic
     // Group eligible promos by their StackingGroup
@@ -227,9 +230,40 @@ export const calculateQuoteTotals = (
     // Track how many times each BOGO promo has been applied to prevent over-application
     const bogoApplications: Record<string, number> = {};
 
-    // 3. Apply Device and BTS promotions
+    // 3. Apply Device, BTS and Reimbursement promotions
     (config.devices || []).forEach(device => {
-        if (device.tradeInType === 'promo' && device.appliedPromoId) {
+        
+        // --- A. REIMBURSEMENT LOGIC (Keep & Switch / Carrier Freedom) ---
+        // If device has competitor owed amount, check for active reimbursement promos
+        if (device.competitorOwedAmount && device.competitorOwedAmount > 0) {
+            const reimbursementPromos = activePromos.filter(p => p.category === PromotionCategory.REIMBURSEMENT);
+            // Simple logic: pick the first valid one. In reality, multiple might exist with different rules.
+            const validReimbursement = reimbursementPromos.find(p => (p.conditions || []).every(c => {
+                // Special check for dynamic condition field 'OWES_COMPETITOR'
+                if (c.field === PromotionConditionField.OWES_COMPETITOR) return true; // Handled by if block presence
+                return checkCondition(config, c);
+            }));
+
+            if (validReimbursement) {
+                validReimbursement.effects.forEach(effect => {
+                    if (effect.type === PromotionEffectType.REIMBURSEMENT_FIXED) {
+                        const maxVal = effect.maxValue || Infinity;
+                        const actualReimbursement = Math.min(toCents(device.competitorOwedAmount || 0), toCents(maxVal));
+                        totalReimbursementInCents += actualReimbursement;
+                        // Avoid duplicates in applied list
+                        if (!appliedPromotions.some(p => p.id === validReimbursement.id)) {
+                            appliedPromotions.push({ ...validReimbursement, discountInCents: 0, reimbursementAmountInCents: actualReimbursement });
+                        }
+                    }
+                });
+            }
+        }
+
+        // --- B. DEVICE PROMO LOGIC (Trade-In / Credits) ---
+        // Note: Usually can't combine Reimbursement with Trade-In credit on same line. 
+        // Logic: If reimbursement applied, skip trade-in credit unless promo explicitly allows.
+        // For simplicity, we prioritize reimbursement if owed amount exists.
+        if (device.tradeInType === 'promo' && device.appliedPromoId && (!device.competitorOwedAmount || device.competitorOwedAmount === 0)) {
             const promo = promotions.find(p => p.id === device.appliedPromoId);
             if (promo) {
                 const generalConditionsMet = (promo.conditions || []).every(c => checkCondition(config, c));
@@ -271,7 +305,7 @@ export const calculateQuoteTotals = (
             }
         }
         
-        // Handle BTS Promos (for now, apply the first one that matches)
+        // --- C. BTS PROMO LOGIC ---
         const deviceModel = deviceDatabase.devices.find(d => d.id === device.modelId);
         if (device.servicePlanId && deviceModel && deviceModel.category !== DeviceCategory.PHONE) {
              for (const promo of activePromos.filter(p => p.category === PromotionCategory.BTS)) {
@@ -296,15 +330,12 @@ export const calculateQuoteTotals = (
     const financing = _calculateFinancing(config, instantDeviceRebateInCents);
     const { monthlyDevicePaymentInCents, financedAccessoriesMonthlyCostInCents, financedAccessories } = financing;
 
-    // --- UPDATED INSURANCE CALCULATION (Per Device) ---
-    // Instead of using global tier/lines, sum the cost of the selected insurance plan for each device.
+    // --- UPDATED INSURANCE CALCULATION (Per Device via Engine) ---
     const insuranceCostInCents = (devices || []).reduce((sum, device) => {
         if (device.insuranceId) {
-            const plan = insurancePlans.find(p => p.id === device.insuranceId);
-            return sum + toCents(plan?.price || 0);
+            const price = InsuranceEngine.calculateCost(device, device.insuranceId);
+            return sum + toCents(price);
         }
-        // Backward compatibility: If no insuranceId on device but global tier exists (rare case during migration)
-        // logic omitted for clarity, assuming new UI enforces device selection.
         return sum;
     }, 0);
 
@@ -347,5 +378,6 @@ export const calculateQuoteTotals = (
         financedByDevicesInCents: financing.financedByDevicesInCents, 
         financedByAccessoriesInCents: financing.financedByAccessoriesInCents, totalLinesForEC: financing.totalLinesForEC,
         availableFinancingLimitInCents: financing.availableFinancingLimitInCents, appliedPromotions,
+        totalReimbursementInCents, // NEW
     };
 };
